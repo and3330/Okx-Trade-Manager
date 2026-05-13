@@ -857,12 +857,22 @@ type OkxAlgoRow = {
 };
 
 export async function fetchPendingAlgoOrders(instId: string): Promise<PendingAlgoOrder[]> {
-  // OKX algo orders attached via attachAlgoOrds appear as ordType="conditional" or "oco" in pending list.
-  const rows = await okxRequest<OkxAlgoRow[]>(
-    "GET",
-    "/api/v5/trade/orders-algo-pending",
-    { query: { instType: "SWAP", instId } },
-  );
+  // OKX requires ordType: attached SL+TP becomes "oco"; SL-only or TP-only becomes "conditional".
+  // The endpoint accepts only one ordType per call, so query both and merge.
+  const queryBoth = async (ordType: string) => {
+    try {
+      return await okxRequest<OkxAlgoRow[]>(
+        "GET",
+        "/api/v5/trade/orders-algo-pending",
+        { query: { instType: "SWAP", instId, ordType } },
+      );
+    } catch (e) {
+      logger.warn({ err: e, ordType, instId }, "orders-algo-pending fetch failed");
+      return [] as OkxAlgoRow[];
+    }
+  };
+  const [oco, cond] = await Promise.all([queryBoth("oco"), queryBoth("conditional")]);
+  const rows = [...oco, ...cond];
   return rows.map((r) => ({
     algoId: r.algoId,
     algoClOrdId: r.algoClOrdId && r.algoClOrdId !== "" ? r.algoClOrdId : null,
@@ -1263,7 +1273,7 @@ export async function fetchTakerVolume(ccy: string): Promise<TakerVolumeData | n
   try {
     const rows = await publicGet<TakerVolumeRow[]>(
       "/api/v5/rubik/stat/taker-volume",
-      { ccy, instType: "SWAP", period: "1H" },
+      { ccy, instType: "CONTRACTS", period: "1H" },
     );
     const r = rows[0];
     if (!r) return null;
