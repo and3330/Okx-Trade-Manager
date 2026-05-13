@@ -52,6 +52,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/AiAnalysis"
 
+  /okx/ai/recommend:
+    post:
+      operationId: recommendTrade
+      tags: [ai]
+      summary: Get parallel trade recommendations from multiple AI models
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiAnalysisInput"
+      responses:
+        "200":
+          description: Recommendations from all configured models
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiRecommendationsResponse"
+
   /okx/account/balance:
     get:
       operationId: getAccountBalance
@@ -385,3 +404,50 @@ components:
           type: string
         model:
           type: string
+
+    AiRecommendation:
+      type: object
+      required: [providerId, providerLabel, model, latencyMs, ok]
+      properties:
+        providerId:
+          type: string
+          description: Stable id (anthropic | openai | gemini | openrouter)
+        providerLabel:
+          type: string
+          description: Human-readable label (e.g. "Claude Sonnet 4.6")
+        model:
+          type: string
+        latencyMs:
+          type: integer
+        ok:
+          type: boolean
+        error:
+          type: ["string", "null"]
+        action:
+          type: ["string", "null"]
+          enum: [buy, sell, hold, null]
+        sizeUsdt:
+          type: ["number", "null"]
+          description: Suggested USDT notional for the trade (null if hold)
+        stopLossPrice:
+          type: ["number", "null"]
+        confidence:
+          type: ["integer", "null"]
+          description: 1-10 self-reported confidence
+        reasoning:
+          type: ["string", "null"]
+
+    AiRecommendationsResponse:
+      type: object
+      required: [instId, generatedAt, lastPrice, recommendations]
+      properties:
+        instId:
+          type: string
+        generatedAt:
+          type: string
+        lastPrice:
+          type: number
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiRecommendation"

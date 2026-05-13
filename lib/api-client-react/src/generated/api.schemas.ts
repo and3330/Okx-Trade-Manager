@@ -142,3 +142,51 @@ export interface AiAnalysis {
   generatedAt: string;
   model: string;
 }
+
+/**
+ * @nullable
+ */
+export type AiRecommendationAction =
+  | (typeof AiRecommendationAction)[keyof typeof AiRecommendationAction]
+  | null;
+
+export const AiRecommendationAction = {
+  buy: "buy",
+  sell: "sell",
+  hold: "hold",
+} as const;
+
+export interface AiRecommendation {
+  /** Stable id (anthropic | openai | gemini | openrouter) */
+  providerId: string;
+  /** Human-readable label (e.g. "Claude Sonnet 4.6") */
+  providerLabel: string;
+  model: string;
+  latencyMs: number;
+  ok: boolean;
+  /** @nullable */
+  error?: string | null;
+  /** @nullable */
+  action?: AiRecommendationAction;
+  /**
+   * Suggested USDT notional for the trade (null if hold)
+   * @nullable
+   */
+  sizeUsdt?: number | null;
+  /** @nullable */
+  stopLossPrice?: number | null;
+  /**
+   * 1-10 self-reported confidence
+   * @nullable
+   */
+  confidence?: number | null;
+  /** @nullable */
+  reasoning?: string | null;
+}
+
+export interface AiRecommendationsResponse {
+  instId: string;
+  generatedAt: string;
+  lastPrice: number;
+  recommendations: AiRecommendation[];
+}

@@ -32,6 +32,51 @@ export const AnalyzeMarketResponse = zod.object({
 });
 
 /**
+ * @summary Get parallel trade recommendations from multiple AI models
+ */
+export const RecommendTradeBody = zod.object({
+  instId: zod.string(),
+});
+
+export const RecommendTradeResponse = zod.object({
+  instId: zod.string(),
+  generatedAt: zod.string(),
+  lastPrice: zod.number(),
+  recommendations: zod.array(
+    zod.object({
+      providerId: zod
+        .string()
+        .describe("Stable id (anthropic | openai | gemini | openrouter)"),
+      providerLabel: zod
+        .string()
+        .describe('Human-readable label (e.g. \"Claude Sonnet 4.6\")'),
+      model: zod.string(),
+      latencyMs: zod.number(),
+      ok: zod.boolean(),
+      error: zod.string().nullish(),
+      action: zod
+        .union([
+          zod.literal("buy"),
+          zod.literal("sell"),
+          zod.literal("hold"),
+          zod.literal(null),
+        ])
+        .nullish(),
+      sizeUsdt: zod
+        .number()
+        .nullish()
+        .describe("Suggested USDT notional for the trade (null if hold)"),
+      stopLossPrice: zod.number().nullish(),
+      confidence: zod
+        .number()
+        .nullish()
+        .describe("1-10 self-reported confidence"),
+      reasoning: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
  * @summary Get OKX account balances
  */
 export const GetAccountBalanceResponse = zod.object({

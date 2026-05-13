@@ -30,11 +30,16 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- AI integrations use the Replit AI Integrations proxy for all 4 providers (env vars `AI_INTEGRATIONS_{ANTHROPIC,OPENAI,GEMINI,OPENROUTER}_{BASE_URL,API_KEY}` are auto-provisioned). No user API keys required, charges go to Replit credits.
+- For simplicity we install provider SDKs directly in `@workspace/api-server` (skipping the per-provider integration lib packages and `conversations`/`messages` DB schemas the templates ship with). Each request is one-shot — no chat history is persisted.
+- Gemini SDK requires `httpOptions: { apiVersion: "" }` so the proxy URL isn't double-prefixed with `/v1beta`.
+- OpenRouter uses the OpenAI SDK with the OpenRouter base URL — they're API-compatible.
+- AI Battle endpoint (`POST /okx/ai/recommend`) calls all 4 providers in parallel via `Promise.all`; per-provider failures degrade gracefully (`ok: false` with `error`) rather than failing the whole response.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Live OKX spot dashboard: tickers, 1H candle chart, account equity & holdings, market buy/sell with optional stop-loss, recent orders/fills.
+- AI Trade Battle: clicking the panel above the order form fans out the same market context (ticker + last 48 1H candles + balance) to 4 models in parallel — Claude Sonnet 4.6, OpenAI GPT-5.4, Gemini 2.5 Pro, DeepSeek V4 Pro (via OpenRouter). Each returns a structured JSON decision (buy/sell/hold + size in USDT + optional stop-loss + 1-10 confidence + short reasoning). The user clicks Execute on whichever recommendation they want; nothing trades automatically.
 
 ## User preferences
 

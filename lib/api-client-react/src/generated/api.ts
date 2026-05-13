@@ -21,6 +21,7 @@ import type {
   AccountSummary,
   AiAnalysis,
   AiAnalysisInput,
+  AiRecommendationsResponse,
   Candle,
   ErrorResponse,
   Fill,
@@ -200,6 +201,92 @@ export const useAnalyzeMarket = <
   TContext
 > => {
   return useMutation(getAnalyzeMarketMutationOptions(options));
+};
+
+/**
+ * @summary Get parallel trade recommendations from multiple AI models
+ */
+export const getRecommendTradeUrl = () => {
+  return `/api/okx/ai/recommend`;
+};
+
+export const recommendTrade = async (
+  aiAnalysisInput: AiAnalysisInput,
+  options?: RequestInit,
+): Promise<AiRecommendationsResponse> => {
+  return customFetch<AiRecommendationsResponse>(getRecommendTradeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiAnalysisInput),
+  });
+};
+
+export const getRecommendTradeMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recommendTrade>>,
+    TError,
+    { data: BodyType<AiAnalysisInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recommendTrade>>,
+  TError,
+  { data: BodyType<AiAnalysisInput> },
+  TContext
+> => {
+  const mutationKey = ["recommendTrade"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recommendTrade>>,
+    { data: BodyType<AiAnalysisInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return recommendTrade(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecommendTradeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recommendTrade>>
+>;
+export type RecommendTradeMutationBody = BodyType<AiAnalysisInput>;
+export type RecommendTradeMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Get parallel trade recommendations from multiple AI models
+ */
+export const useRecommendTrade = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recommendTrade>>,
+    TError,
+    { data: BodyType<AiAnalysisInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recommendTrade>>,
+  TError,
+  { data: BodyType<AiAnalysisInput> },
+  TContext
+> => {
+  return useMutation(getRecommendTradeMutationOptions(options));
 };
 
 /**

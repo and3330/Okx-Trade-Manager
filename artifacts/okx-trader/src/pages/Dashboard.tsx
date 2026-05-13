@@ -3,7 +3,7 @@ import AccountOverview from "@/components/AccountOverview";
 import MarketTickers from "@/components/MarketTickers";
 import PriceChart from "@/components/PriceChart";
 import OrderForm from "@/components/OrderForm";
-import AiAnalysis from "@/components/AiAnalysis";
+import AiBattle from "@/components/AiBattle";
 import RecentOrders from "@/components/RecentOrders";
 import RecentFills from "@/components/RecentFills";
 import HoldingsList from "@/components/HoldingsList";
@@ -57,8 +57,8 @@ export default function Dashboard() {
         </section>
 
         {/* Right Sidebar: Order Entry + AI Analysis */}
-        <aside className="flex w-[360px] shrink-0 flex-col border-l border-border bg-card overflow-y-auto">
-          <AiAnalysis instId={selectedInstId} />
+        <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-card overflow-y-auto">
+          <AiBattle instId={selectedInstId} />
           <div className="flex-1">
             <OrderForm instId={selectedInstId} />
           </div>
