@@ -113,17 +113,17 @@ ${portfolioCtx}`;
 }
 
 function buildAnalysisPrompt(ctx: string, instId: string, baseAsset: string): string {
-  return `You are a concise crypto market analyst. The user is looking at ${instId} on OKX spot.
+  return `你是一位精簡的加密貨幣市場分析師。使用者正在 OKX 現貨看 ${instId}。
 
 ${ctx}
 
-Write a short markdown analysis (under 250 words) with these sections, no preamble:
-- **Trend**: short-term direction and momentum read from the candles.
-- **Key levels**: nearby support and resistance suggested by the data.
-- **Volatility & volume**: notable observations.
-- **Suggestion**: a non-binding, clearly-hedged view (e.g. "lean bullish, scale in", "wait for break", "no clear edge"). Mention how the user's existing ${baseAsset} or USDT balance might inform sizing.
+請用繁體中文撰寫一段精簡的 markdown 分析(400 字以內),不要前言,包含以下小節:
+- **趨勢**:從 K 線判讀短期方向與動能。
+- **關鍵價位**:資料中浮現的鄰近支撐與壓力。
+- **波動與成交量**:值得注意的觀察。
+- **建議**:非強制性、明確帶保留口吻的看法(例如「偏多,可分批進場」「等突破再進」「方向不明,觀望」)。提到使用者目前的 ${baseAsset} 或 USDT 餘額可如何影響倉位大小。
 
-End with a one-line disclaimer that this is not financial advice. Use plain numbers, no emojis.`;
+最後加一行免責聲明,說明這不是投資建議。數字直接寫,不要使用 emoji。`;
 }
 
 function buildRecommendPrompt(
@@ -136,22 +136,22 @@ function buildRecommendPrompt(
 ): string {
   const maxBuy = Math.min(heldUsdt, 1000);
   const maxSellUsdt = heldBase * lastPrice;
-  return `You are a disciplined short-term crypto trader looking at ${instId} on OKX spot.
+  return `你是一位有紀律的短線加密貨幣交易員,正在 OKX 現貨看 ${instId}。
 
 ${ctx}
 
-Decide on ONE concrete action for the next few hours: buy, sell, or hold.
+請針對接下來幾小時決定一個具體動作:buy(買入)、sell(賣出)、或 hold(觀望)。
 
-Constraints:
-- This is a SPOT account, no leverage, no shorting. A "sell" only makes sense if the user already holds ${baseAsset} (currently ${heldBase}).
-- For a buy, sizeUsdt must be > 0 and <= ${maxBuy.toFixed(2)} (capped to available USDT, max $1000 per call).
-- For a sell, sizeUsdt is the USDT-equivalent of how much ${baseAsset} to sell, must be > 0 and <= ${maxSellUsdt.toFixed(2)}.
-- For a hold, set sizeUsdt to null and stopLossPrice to null.
-- A stopLossPrice only applies to buys. For sells or holds set stopLossPrice to null. If you do set one, it must be strictly below the current last price (${lastPrice}).
-- confidence is an integer 1-10 expressing how sure you are.
-- reasoning: 2-4 sentences, plain text, no markdown.
+限制:
+- 這是現貨帳戶,沒有槓桿、不能做空。"sell" 只在使用者已經持有 ${baseAsset} 時(目前 ${heldBase})才合理。
+- 若是 buy,sizeUsdt 必須 > 0 且 <= ${maxBuy.toFixed(2)}(受限於可用 USDT,單次最多 $1000)。
+- 若是 sell,sizeUsdt 是要賣掉 ${baseAsset} 換算成 USDT 的金額,必須 > 0 且 <= ${maxSellUsdt.toFixed(2)}。
+- 若是 hold,sizeUsdt 與 stopLossPrice 都設為 null。
+- stopLossPrice 只適用於 buy。sell 或 hold 時設為 null。若有設定,必須嚴格低於目前最新價 (${lastPrice})。
+- confidence 是 1-10 的整數,代表你的把握程度。
+- reasoning 請用「繁體中文」,2-4 句話,純文字,不要 markdown。
 
-Respond with ONLY a single JSON object, no prose, no markdown fences, matching exactly this schema:
+只回傳一個 JSON 物件,不要附加任何說明文字、不要 markdown code fence,結構必須完全符合:
 {
   "action": "buy" | "sell" | "hold",
   "sizeUsdt": number | null,
