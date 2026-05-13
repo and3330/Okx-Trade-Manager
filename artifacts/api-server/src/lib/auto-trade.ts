@@ -421,7 +421,23 @@ async function processInstrument(args: {
     return { instId, action: "skipped", reason: `invalid_sl_short sl=${stopLossPrice} px=${pipeline.lastPrice}`, executionId: null };
   }
 
-  const takeProfitPrice = consensus.medianTakeProfitPrice;
+  // Force TP via 2:1 risk:reward if not provided — every trade must have an exit plan
+  // attached server-side at OKX, otherwise profit-taking depends on luck (next-cycle close vote).
+  let takeProfitPrice = consensus.medianTakeProfitPrice;
+  if (takeProfitPrice == null) {
+    const slDistance = Math.abs(pipeline.lastPrice - stopLossPrice);
+    if (slDistance > 0) {
+      takeProfitPrice = side === "long"
+        ? pipeline.lastPrice + slDistance * 2
+        : pipeline.lastPrice - slDistance * 2;
+    }
+  }
+  // Sanity check TP: must be on profit side with non-trivial distance.
+  if (takeProfitPrice != null) {
+    const tp = takeProfitPrice;
+    if (side === "long" && tp <= pipeline.lastPrice + minDistance) takeProfitPrice = null;
+    if (side === "short" && tp >= pipeline.lastPrice - minDistance) takeProfitPrice = null;
+  }
 
   try {
     const result = await placePerpMarketOrder({
