@@ -23,12 +23,19 @@ import type {
   AiAnalysisInput,
   AiRecommendationsResponse,
   Candle,
+  ClosePerpInput,
+  ClosePerpResult,
   ErrorResponse,
   Fill,
   HealthStatus,
   Order,
   OrderInput,
   OrderResult,
+  PerpInstrument,
+  PerpOrderInput,
+  PerpOrderResult,
+  PerpPosition,
+  PerpTicker,
   Ticker,
 } from "./api.schemas";
 
@@ -843,6 +850,416 @@ export const usePlaceOrder = <
   TContext
 > => {
   return useMutation(getPlaceOrderMutationOptions(options));
+};
+
+/**
+ * @summary List a curated set of top USDT-margined perpetual tickers
+ */
+export const getListPerpTickersUrl = () => {
+  return `/api/okx/perp/tickers`;
+};
+
+export const listPerpTickers = async (
+  options?: RequestInit,
+): Promise<PerpTicker[]> => {
+  return customFetch<PerpTicker[]>(getListPerpTickersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPerpTickersQueryKey = () => {
+  return [`/api/okx/perp/tickers`] as const;
+};
+
+export const getListPerpTickersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPerpTickers>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPerpTickers>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPerpTickersQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPerpTickers>>> = ({
+    signal,
+  }) => listPerpTickers({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPerpTickers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPerpTickersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPerpTickers>>
+>;
+export type ListPerpTickersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List a curated set of top USDT-margined perpetual tickers
+ */
+
+export function useListPerpTickers<
+  TData = Awaited<ReturnType<typeof listPerpTickers>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPerpTickers>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPerpTickersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get instrument metadata (contract size, lot size, max leverage)
+ */
+export const getGetPerpInstrumentUrl = (instId: string) => {
+  return `/api/okx/perp/instruments/${instId}`;
+};
+
+export const getPerpInstrument = async (
+  instId: string,
+  options?: RequestInit,
+): Promise<PerpInstrument> => {
+  return customFetch<PerpInstrument>(getGetPerpInstrumentUrl(instId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPerpInstrumentQueryKey = (instId: string) => {
+  return [`/api/okx/perp/instruments/${instId}`] as const;
+};
+
+export const getGetPerpInstrumentQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPerpInstrument>>,
+  TError = ErrorType<unknown>,
+>(
+  instId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPerpInstrument>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPerpInstrumentQueryKey(instId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPerpInstrument>>
+  > = ({ signal }) => getPerpInstrument(instId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!instId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPerpInstrument>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPerpInstrumentQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPerpInstrument>>
+>;
+export type GetPerpInstrumentQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get instrument metadata (contract size, lot size, max leverage)
+ */
+
+export function useGetPerpInstrument<
+  TData = Awaited<ReturnType<typeof getPerpInstrument>>,
+  TError = ErrorType<unknown>,
+>(
+  instId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPerpInstrument>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPerpInstrumentQueryOptions(instId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List currently open perpetual positions
+ */
+export const getListPerpPositionsUrl = () => {
+  return `/api/okx/perp/positions`;
+};
+
+export const listPerpPositions = async (
+  options?: RequestInit,
+): Promise<PerpPosition[]> => {
+  return customFetch<PerpPosition[]>(getListPerpPositionsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPerpPositionsQueryKey = () => {
+  return [`/api/okx/perp/positions`] as const;
+};
+
+export const getListPerpPositionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPerpPositions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPerpPositions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPerpPositionsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPerpPositions>>
+  > = ({ signal }) => listPerpPositions({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPerpPositions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPerpPositionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPerpPositions>>
+>;
+export type ListPerpPositionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List currently open perpetual positions
+ */
+
+export function useListPerpPositions<
+  TData = Awaited<ReturnType<typeof listPerpPositions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPerpPositions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPerpPositionsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Open a perpetual market position with margin + leverage and optional TP/SL
+ */
+export const getPlacePerpOrderUrl = () => {
+  return `/api/okx/perp/orders`;
+};
+
+export const placePerpOrder = async (
+  perpOrderInput: PerpOrderInput,
+  options?: RequestInit,
+): Promise<PerpOrderResult> => {
+  return customFetch<PerpOrderResult>(getPlacePerpOrderUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(perpOrderInput),
+  });
+};
+
+export const getPlacePerpOrderMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof placePerpOrder>>,
+    TError,
+    { data: BodyType<PerpOrderInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof placePerpOrder>>,
+  TError,
+  { data: BodyType<PerpOrderInput> },
+  TContext
+> => {
+  const mutationKey = ["placePerpOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof placePerpOrder>>,
+    { data: BodyType<PerpOrderInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return placePerpOrder(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlacePerpOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof placePerpOrder>>
+>;
+export type PlacePerpOrderMutationBody = BodyType<PerpOrderInput>;
+export type PlacePerpOrderMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Open a perpetual market position with margin + leverage and optional TP/SL
+ */
+export const usePlacePerpOrder = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof placePerpOrder>>,
+    TError,
+    { data: BodyType<PerpOrderInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof placePerpOrder>>,
+  TError,
+  { data: BodyType<PerpOrderInput> },
+  TContext
+> => {
+  return useMutation(getPlacePerpOrderMutationOptions(options));
+};
+
+/**
+ * @summary Close an open perpetual position at market
+ */
+export const getClosePerpPositionUrl = () => {
+  return `/api/okx/perp/orders/close`;
+};
+
+export const closePerpPosition = async (
+  closePerpInput: ClosePerpInput,
+  options?: RequestInit,
+): Promise<ClosePerpResult> => {
+  return customFetch<ClosePerpResult>(getClosePerpPositionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(closePerpInput),
+  });
+};
+
+export const getClosePerpPositionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof closePerpPosition>>,
+    TError,
+    { data: BodyType<ClosePerpInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof closePerpPosition>>,
+  TError,
+  { data: BodyType<ClosePerpInput> },
+  TContext
+> => {
+  const mutationKey = ["closePerpPosition"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof closePerpPosition>>,
+    { data: BodyType<ClosePerpInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return closePerpPosition(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClosePerpPositionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof closePerpPosition>>
+>;
+export type ClosePerpPositionMutationBody = BodyType<ClosePerpInput>;
+export type ClosePerpPositionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Close an open perpetual position at market
+ */
+export const useClosePerpPosition = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof closePerpPosition>>,
+    TError,
+    { data: BodyType<ClosePerpInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof closePerpPosition>>,
+  TError,
+  { data: BodyType<ClosePerpInput> },
+  TContext
+> => {
+  return useMutation(getClosePerpPositionMutationOptions(options));
 };
 
 /**

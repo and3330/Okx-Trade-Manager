@@ -17,4 +17,7 @@ export const AiRecommendationAction = {
   buy: "buy",
   sell: "sell",
   hold: "hold",
+  long: "long",
+  short: "short",
+  close: "close",
 } as const;

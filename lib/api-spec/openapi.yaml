@@ -16,6 +16,8 @@ tags:
     description: OKX market data
   - name: trade
     description: OKX trading operations
+  - name: perp
+    description: OKX USDT-margined perpetual (SWAP) trading
   - name: ai
     description: AI-powered analysis
 paths:
@@ -183,6 +185,105 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /okx/perp/tickers:
+    get:
+      operationId: listPerpTickers
+      tags: [perp]
+      summary: List a curated set of top USDT-margined perpetual tickers
+      responses:
+        "200":
+          description: Perp ticker list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PerpTicker"
+
+  /okx/perp/instruments/{instId}:
+    get:
+      operationId: getPerpInstrument
+      tags: [perp]
+      summary: Get instrument metadata (contract size, lot size, max leverage)
+      parameters:
+        - name: instId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Instrument metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerpInstrument"
+
+  /okx/perp/positions:
+    get:
+      operationId: listPerpPositions
+      tags: [perp]
+      summary: List currently open perpetual positions
+      responses:
+        "200":
+          description: Open positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PerpPosition"
+
+  /okx/perp/orders:
+    post:
+      operationId: placePerpOrder
+      tags: [perp]
+      summary: Open a perpetual market position with margin + leverage and optional TP/SL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PerpOrderInput"
+      responses:
+        "201":
+          description: Order accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerpOrderResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /okx/perp/orders/close:
+    post:
+      operationId: closePerpPosition
+      tags: [perp]
+      summary: Close an open perpetual position at market
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClosePerpInput"
+      responses:
+        "200":
+          description: Close request accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClosePerpResult"
         "400":
           description: Invalid request
           content:
@@ -384,12 +485,164 @@ components:
         message:
           type: ["string", "null"]
 
+    PerpTicker:
+      type: object
+      required: [instId, baseCcy, last, open24h, high24h, low24h, vol24h, changePct24h]
+      properties:
+        instId:
+          type: string
+        baseCcy:
+          type: string
+        last:
+          type: number
+        open24h:
+          type: number
+        high24h:
+          type: number
+        low24h:
+          type: number
+        vol24h:
+          type: number
+        changePct24h:
+          type: number
+
+    PerpInstrument:
+      type: object
+      required: [instId, baseCcy, ctVal, lotSz, minSz, tickSz, maxLeverage]
+      properties:
+        instId:
+          type: string
+        baseCcy:
+          type: string
+        ctVal:
+          type: number
+        lotSz:
+          type: number
+        minSz:
+          type: number
+        tickSz:
+          type: number
+        maxLeverage:
+          type: number
+
+    PerpPosition:
+      type: object
+      required: [instId, posSide, contracts, baseQty, avgEntryPx, markPx, unrealizedPnlUsd, unrealizedPnlPct, marginUsd, leverage, marginMode, updatedAt]
+      properties:
+        instId:
+          type: string
+        posSide:
+          type: string
+          enum: [long, short, net]
+        contracts:
+          type: number
+        baseQty:
+          type: number
+        avgEntryPx:
+          type: number
+        markPx:
+          type: number
+        unrealizedPnlUsd:
+          type: number
+        unrealizedPnlPct:
+          type: number
+        marginUsd:
+          type: number
+        leverage:
+          type: number
+        marginMode:
+          type: string
+          enum: [isolated, cross]
+        liquidationPx:
+          type: ["number", "null"]
+        updatedAt:
+          type: string
+
+    PerpOrderInput:
+      type: object
+      required: [instId, side, marginUsdt, leverage]
+      properties:
+        instId:
+          type: string
+          description: Perpetual instrument, e.g. HYPE-USDT-SWAP
+        side:
+          type: string
+          enum: [long, short]
+        marginUsdt:
+          type: number
+          minimum: 0
+          description: USDT margin to commit (notional = margin * leverage)
+        leverage:
+          type: integer
+          minimum: 1
+          maximum: 125
+        takeProfitPrice:
+          type: ["number", "null"]
+        stopLossPrice:
+          type: ["number", "null"]
+
+    PerpOrderResult:
+      type: object
+      required: [ordId, instId, side, contracts, notionalUsd, markPx, leverage, status]
+      properties:
+        ordId:
+          type: string
+        instId:
+          type: string
+        side:
+          type: string
+          enum: [long, short]
+        contracts:
+          type: number
+        notionalUsd:
+          type: number
+        markPx:
+          type: number
+        leverage:
+          type: number
+        status:
+          type: string
+        message:
+          type: ["string", "null"]
+
+    ClosePerpInput:
+      type: object
+      required: [instId]
+      properties:
+        instId:
+          type: string
+        posSide:
+          type: ["string", "null"]
+          enum: [long, short, net, null]
+        marginMode:
+          type: ["string", "null"]
+          enum: [isolated, cross, null]
+
+    ClosePerpResult:
+      type: object
+      required: [instId, status]
+      properties:
+        instId:
+          type: string
+        status:
+          type: string
+
     AiAnalysisInput:
       type: object
       required: [instId]
       properties:
         instId:
           type: string
+        mode:
+          type: ["string", "null"]
+          enum: [spot, perp, null]
+          description: spot (default) or perp - changes the prompt for the AI
+        marginUsdt:
+          type: ["number", "null"]
+          description: For perp mode, max USDT margin the AI may suggest committing
+        maxLeverage:
+          type: ["integer", "null"]
+          description: For perp mode, max leverage the AI may suggest
 
     AiAnalysis:
       type: object
@@ -425,12 +678,21 @@ components:
           type: ["string", "null"]
         action:
           type: ["string", "null"]
-          enum: [buy, sell, hold, null]
+          enum: [buy, sell, hold, long, short, close, null]
         sizeUsdt:
           type: ["number", "null"]
-          description: Suggested USDT notional for the trade (null if hold)
+          description: Spot mode - suggested USDT notional. Perp mode - leave null.
+        marginUsdt:
+          type: ["number", "null"]
+          description: Perp mode - suggested USDT margin (notional = margin * leverage)
+        leverage:
+          type: ["integer", "null"]
+          description: Perp mode - suggested leverage (1 to maxLeverage)
         stopLossPrice:
           type: ["number", "null"]
+        takeProfitPrice:
+          type: ["number", "null"]
+          description: Perp mode - optional take-profit trigger price
         confidence:
           type: ["integer", "null"]
           description: 1-10 self-reported confidence

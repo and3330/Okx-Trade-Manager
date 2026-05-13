@@ -20,6 +20,18 @@ export const HealthCheckResponse = zod.object({
  */
 export const AnalyzeMarketBody = zod.object({
   instId: zod.string(),
+  mode: zod
+    .union([zod.literal("spot"), zod.literal("perp"), zod.literal(null)])
+    .nullish()
+    .describe("spot (default) or perp - changes the prompt for the AI"),
+  marginUsdt: zod
+    .number()
+    .nullish()
+    .describe("For perp mode, max USDT margin the AI may suggest committing"),
+  maxLeverage: zod
+    .number()
+    .nullish()
+    .describe("For perp mode, max leverage the AI may suggest"),
 });
 
 export const AnalyzeMarketResponse = zod.object({
@@ -36,6 +48,18 @@ export const AnalyzeMarketResponse = zod.object({
  */
 export const RecommendTradeBody = zod.object({
   instId: zod.string(),
+  mode: zod
+    .union([zod.literal("spot"), zod.literal("perp"), zod.literal(null)])
+    .nullish()
+    .describe("spot (default) or perp - changes the prompt for the AI"),
+  marginUsdt: zod
+    .number()
+    .nullish()
+    .describe("For perp mode, max USDT margin the AI may suggest committing"),
+  maxLeverage: zod
+    .number()
+    .nullish()
+    .describe("For perp mode, max leverage the AI may suggest"),
 });
 
 export const RecommendTradeResponse = zod.object({
@@ -59,14 +83,33 @@ export const RecommendTradeResponse = zod.object({
           zod.literal("buy"),
           zod.literal("sell"),
           zod.literal("hold"),
+          zod.literal("long"),
+          zod.literal("short"),
+          zod.literal("close"),
           zod.literal(null),
         ])
         .nullish(),
       sizeUsdt: zod
         .number()
         .nullish()
-        .describe("Suggested USDT notional for the trade (null if hold)"),
+        .describe(
+          "Spot mode - suggested USDT notional. Perp mode - leave null.",
+        ),
+      marginUsdt: zod
+        .number()
+        .nullish()
+        .describe(
+          "Perp mode - suggested USDT margin (notional = margin \* leverage)",
+        ),
+      leverage: zod
+        .number()
+        .nullish()
+        .describe("Perp mode - suggested leverage (1 to maxLeverage)"),
       stopLossPrice: zod.number().nullish(),
+      takeProfitPrice: zod
+        .number()
+        .nullish()
+        .describe("Perp mode - optional take-profit trigger price"),
       confidence: zod
         .number()
         .nullish()
@@ -191,6 +234,102 @@ export const PlaceOrderBody = zod.object({
     .number()
     .nullish()
     .describe("Optional stop-loss trigger price (attached as algo order)"),
+});
+
+/**
+ * @summary List a curated set of top USDT-margined perpetual tickers
+ */
+export const ListPerpTickersResponseItem = zod.object({
+  instId: zod.string(),
+  baseCcy: zod.string(),
+  last: zod.number(),
+  open24h: zod.number(),
+  high24h: zod.number(),
+  low24h: zod.number(),
+  vol24h: zod.number(),
+  changePct24h: zod.number(),
+});
+export const ListPerpTickersResponse = zod.array(ListPerpTickersResponseItem);
+
+/**
+ * @summary Get instrument metadata (contract size, lot size, max leverage)
+ */
+export const GetPerpInstrumentParams = zod.object({
+  instId: zod.coerce.string(),
+});
+
+export const GetPerpInstrumentResponse = zod.object({
+  instId: zod.string(),
+  baseCcy: zod.string(),
+  ctVal: zod.number(),
+  lotSz: zod.number(),
+  minSz: zod.number(),
+  tickSz: zod.number(),
+  maxLeverage: zod.number(),
+});
+
+/**
+ * @summary List currently open perpetual positions
+ */
+export const ListPerpPositionsResponseItem = zod.object({
+  instId: zod.string(),
+  posSide: zod.enum(["long", "short", "net"]),
+  contracts: zod.number(),
+  baseQty: zod.number(),
+  avgEntryPx: zod.number(),
+  markPx: zod.number(),
+  unrealizedPnlUsd: zod.number(),
+  unrealizedPnlPct: zod.number(),
+  marginUsd: zod.number(),
+  leverage: zod.number(),
+  marginMode: zod.enum(["isolated", "cross"]),
+  liquidationPx: zod.number().nullish(),
+  updatedAt: zod.string(),
+});
+export const ListPerpPositionsResponse = zod.array(
+  ListPerpPositionsResponseItem,
+);
+
+/**
+ * @summary Open a perpetual market position with margin + leverage and optional TP/SL
+ */
+export const placePerpOrderBodyMarginUsdtMin = 0;
+
+export const placePerpOrderBodyLeverageMax = 125;
+
+export const PlacePerpOrderBody = zod.object({
+  instId: zod.string().describe("Perpetual instrument, e.g. HYPE-USDT-SWAP"),
+  side: zod.enum(["long", "short"]),
+  marginUsdt: zod
+    .number()
+    .min(placePerpOrderBodyMarginUsdtMin)
+    .describe("USDT margin to commit (notional = margin \* leverage)"),
+  leverage: zod.number().min(1).max(placePerpOrderBodyLeverageMax),
+  takeProfitPrice: zod.number().nullish(),
+  stopLossPrice: zod.number().nullish(),
+});
+
+/**
+ * @summary Close an open perpetual position at market
+ */
+export const ClosePerpPositionBody = zod.object({
+  instId: zod.string(),
+  posSide: zod
+    .union([
+      zod.literal("long"),
+      zod.literal("short"),
+      zod.literal("net"),
+      zod.literal(null),
+    ])
+    .nullish(),
+  marginMode: zod
+    .union([zod.literal("isolated"), zod.literal("cross"), zod.literal(null)])
+    .nullish(),
+});
+
+export const ClosePerpPositionResponse = zod.object({
+  instId: zod.string(),
+  status: zod.string(),
 });
 
 /**

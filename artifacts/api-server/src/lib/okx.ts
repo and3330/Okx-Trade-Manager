@@ -489,6 +489,344 @@ export async function placeMarketOrder(
   };
 }
 
+// ---------- Perpetual (SWAP) ----------
+
+const TOP_PERP_INSTRUMENTS = [
+  "BTC-USDT-SWAP",
+  "ETH-USDT-SWAP",
+  "SOL-USDT-SWAP",
+  "BNB-USDT-SWAP",
+  "XRP-USDT-SWAP",
+  "DOGE-USDT-SWAP",
+  "HYPE-USDT-SWAP",
+  "AVAX-USDT-SWAP",
+  "LINK-USDT-SWAP",
+  "TON-USDT-SWAP",
+  "PEPE-USDT-SWAP",
+  "SUI-USDT-SWAP",
+];
+
+type OkxInstrumentRow = {
+  instId: string;
+  instType: string;
+  ctVal: string;
+  ctValCcy: string;
+  lotSz: string;
+  minSz: string;
+  tickSz: string;
+  lever: string;
+  state: string;
+};
+
+export type PerpInstrumentMeta = {
+  instId: string;
+  baseCcy: string;
+  ctVal: number;
+  lotSz: number;
+  minSz: number;
+  tickSz: number;
+  maxLeverage: number;
+};
+
+const instrumentCache = new Map<string, PerpInstrumentMeta>();
+
+export async function fetchPerpInstrument(instId: string): Promise<PerpInstrumentMeta> {
+  const cached = instrumentCache.get(instId);
+  if (cached) return cached;
+  const rows = await okxRequest<OkxInstrumentRow[]>(
+    "GET",
+    "/api/v5/public/instruments",
+    { query: { instType: "SWAP", instId }, signed: false },
+  );
+  const r = rows[0];
+  if (!r) throw new OkxError("NOT_FOUND", `Instrument ${instId} not found`, 404);
+  const meta: PerpInstrumentMeta = {
+    instId: r.instId,
+    baseCcy: r.ctValCcy,
+    ctVal: num(r.ctVal),
+    lotSz: num(r.lotSz),
+    minSz: num(r.minSz),
+    tickSz: num(r.tickSz),
+    maxLeverage: num(r.lever) || 50,
+  };
+  instrumentCache.set(instId, meta);
+  return meta;
+}
+
+export type PerpTickerData = TickerData & { baseCcy: string };
+
+export async function fetchTopPerpTickers(): Promise<PerpTickerData[]> {
+  const rows = await okxRequest<OkxTickerRow[]>(
+    "GET",
+    "/api/v5/market/tickers",
+    { query: { instType: "SWAP" }, signed: false },
+  );
+  const wanted = new Set(TOP_PERP_INSTRUMENTS);
+  const map = new Map<string, OkxTickerRow>();
+  for (const r of rows) if (wanted.has(r.instId)) map.set(r.instId, r);
+  return TOP_PERP_INSTRUMENTS.filter((id) => map.has(id)).map((id) => {
+    const t = tickerFromRow(map.get(id)!);
+    return { ...t, baseCcy: id.replace("-USDT-SWAP", "") };
+  });
+}
+
+type OkxAccountConfigRow = {
+  posMode: string;
+};
+
+export async function fetchPositionMode(): Promise<"net_mode" | "long_short_mode"> {
+  const rows = await okxRequest<OkxAccountConfigRow[]>(
+    "GET",
+    "/api/v5/account/config",
+  );
+  const mode = rows[0]?.posMode;
+  return mode === "long_short_mode" ? "long_short_mode" : "net_mode";
+}
+
+type OkxPositionRow = {
+  instId: string;
+  instType: string;
+  posSide: string;
+  pos: string;
+  posCcy?: string;
+  avgPx: string;
+  markPx?: string;
+  upl?: string;
+  uplRatio?: string;
+  margin?: string;
+  imr?: string;
+  lever: string;
+  mgnMode: string;
+  liqPx?: string;
+  cTime?: string;
+  uTime?: string;
+};
+
+export type PerpPositionData = {
+  instId: string;
+  posSide: "long" | "short" | "net";
+  contracts: number;
+  baseQty: number;
+  avgEntryPx: number;
+  markPx: number;
+  unrealizedPnlUsd: number;
+  unrealizedPnlPct: number;
+  marginUsd: number;
+  leverage: number;
+  marginMode: "isolated" | "cross";
+  liquidationPx: number | null;
+  updatedAt: string;
+};
+
+export async function fetchPerpPositions(): Promise<PerpPositionData[]> {
+  const rows = await okxRequest<OkxPositionRow[]>(
+    "GET",
+    "/api/v5/account/positions",
+    { query: { instType: "SWAP" } },
+  );
+  const out: PerpPositionData[] = [];
+  for (const r of rows) {
+    const contractsRaw = num(r.pos);
+    if (contractsRaw === 0) continue;
+    let meta: PerpInstrumentMeta;
+    try {
+      meta = await fetchPerpInstrument(r.instId);
+    } catch {
+      continue;
+    }
+    const posSide: "long" | "short" | "net" =
+      r.posSide === "long" || r.posSide === "short" ? r.posSide : "net";
+    const signed = posSide === "short" ? -Math.abs(contractsRaw) : posSide === "long" ? Math.abs(contractsRaw) : contractsRaw;
+    const baseQty = signed * meta.ctVal;
+    const margin = num(r.margin ?? r.imr);
+    const upl = num(r.upl);
+    const uplPct = margin > 0 ? (upl / margin) * 100 : num(r.uplRatio) * 100;
+    out.push({
+      instId: r.instId,
+      posSide,
+      contracts: signed,
+      baseQty,
+      avgEntryPx: num(r.avgPx),
+      markPx: num(r.markPx),
+      unrealizedPnlUsd: upl,
+      unrealizedPnlPct: uplPct,
+      marginUsd: margin,
+      leverage: num(r.lever),
+      marginMode: r.mgnMode === "cross" ? "cross" : "isolated",
+      liquidationPx: r.liqPx && r.liqPx !== "" ? num(r.liqPx) : null,
+      updatedAt: r.uTime ? new Date(parseInt(r.uTime, 10)).toISOString() : new Date().toISOString(),
+    });
+  }
+  return out;
+}
+
+export async function setLeverage(
+  instId: string,
+  leverage: number,
+  mgnMode: "isolated" | "cross",
+  posSide?: "long" | "short",
+): Promise<void> {
+  const body: Record<string, string> = {
+    instId,
+    lever: String(leverage),
+    mgnMode,
+  };
+  if (posSide && mgnMode === "isolated") body["posSide"] = posSide;
+  type Row = { lever: string };
+  await okxRequest<Row[]>("POST", "/api/v5/account/set-leverage", { body });
+}
+
+export type PlacePerpOrderInput = {
+  instId: string;
+  side: "long" | "short";
+  marginUsdt: number;
+  leverage: number;
+  takeProfitPrice?: number | null;
+  stopLossPrice?: number | null;
+};
+
+export type PlacePerpOrderOutput = {
+  ordId: string;
+  instId: string;
+  side: "long" | "short";
+  contracts: number;
+  notionalUsd: number;
+  markPx: number;
+  leverage: number;
+  status: string;
+  message: string | null;
+};
+
+export async function placePerpMarketOrder(
+  input: PlacePerpOrderInput,
+): Promise<PlacePerpOrderOutput> {
+  const { instId, side, marginUsdt, leverage } = input;
+  if (marginUsdt <= 0) throw new OkxError("BAD_REQUEST", "Margin must be > 0", 400);
+  if (leverage < 1) throw new OkxError("BAD_REQUEST", "Leverage must be >= 1", 400);
+
+  const meta = await fetchPerpInstrument(instId);
+  if (leverage > meta.maxLeverage) {
+    throw new OkxError(
+      "BAD_REQUEST",
+      `Leverage ${leverage}x exceeds instrument max ${meta.maxLeverage}x`,
+      400,
+    );
+  }
+  const ticker = await fetchTicker(instId);
+  if (ticker.last <= 0) throw new OkxError("BAD_PRICE", "No market price", 400);
+  if (input.stopLossPrice && input.stopLossPrice > 0) {
+    if (side === "long" && input.stopLossPrice >= ticker.last) {
+      throw new OkxError("BAD_REQUEST", "Long stop-loss must be below last price", 400);
+    }
+    if (side === "short" && input.stopLossPrice <= ticker.last) {
+      throw new OkxError("BAD_REQUEST", "Short stop-loss must be above last price", 400);
+    }
+  }
+  if (input.takeProfitPrice && input.takeProfitPrice > 0) {
+    if (side === "long" && input.takeProfitPrice <= ticker.last) {
+      throw new OkxError("BAD_REQUEST", "Long take-profit must be above last price", 400);
+    }
+    if (side === "short" && input.takeProfitPrice >= ticker.last) {
+      throw new OkxError("BAD_REQUEST", "Short take-profit must be below last price", 400);
+    }
+  }
+
+  const notional = marginUsdt * leverage;
+  const rawContracts = notional / (ticker.last * meta.ctVal);
+  const contracts = Math.floor(rawContracts / meta.lotSz) * meta.lotSz;
+  if (contracts < meta.minSz) {
+    throw new OkxError(
+      "BAD_REQUEST",
+      `Computed size ${rawContracts.toFixed(4)} below min ${meta.minSz} contracts. Increase margin or leverage.`,
+      400,
+    );
+  }
+
+  const posMode = await fetchPositionMode();
+  const posSide: "long" | "short" | undefined =
+    posMode === "long_short_mode" ? side : undefined;
+  const orderSide = side === "long" ? "buy" : "sell";
+
+  // Set leverage (idempotent on OKX)
+  try {
+    await setLeverage(instId, leverage, "isolated", posSide);
+  } catch (err) {
+    logger.warn({ err, instId, leverage }, "set-leverage failed (continuing)");
+  }
+
+  const body: Record<string, unknown> = {
+    instId,
+    tdMode: "isolated",
+    side: orderSide,
+    ordType: "market",
+    sz: String(contracts),
+  };
+  if (posSide) body["posSide"] = posSide;
+
+  const algo: Record<string, string> = {};
+  if (input.takeProfitPrice && input.takeProfitPrice > 0) {
+    algo["tpTriggerPx"] = String(input.takeProfitPrice);
+    algo["tpOrdPx"] = "-1";
+  }
+  if (input.stopLossPrice && input.stopLossPrice > 0) {
+    algo["slTriggerPx"] = String(input.stopLossPrice);
+    algo["slOrdPx"] = "-1";
+  }
+  if (Object.keys(algo).length > 0) body["attachAlgoOrds"] = [algo];
+
+  type Row = { ordId: string; sCode: string; sMsg: string };
+  const rows = await okxRequest<Row[]>("POST", "/api/v5/trade/order", { body });
+  const r = rows[0];
+  if (!r) throw new OkxError("NO_RESPONSE", "OKX returned no order", 502);
+  if (r.sCode !== "0") throw new OkxError(r.sCode, r.sMsg || "Order rejected", 400);
+
+  return {
+    ordId: r.ordId,
+    instId,
+    side,
+    contracts,
+    notionalUsd: contracts * meta.ctVal * ticker.last,
+    markPx: ticker.last,
+    leverage,
+    status: "submitted",
+    message: null,
+  };
+}
+
+export type ClosePerpInput = {
+  instId: string;
+  posSide?: "long" | "short" | "net";
+  marginMode?: "isolated" | "cross";
+};
+
+export async function closePerpPosition(
+  input: ClosePerpInput,
+): Promise<{ instId: string; status: string }> {
+  // Auto-resolve marginMode and posSide from the actual open position when not provided,
+  // so we don't blindly send "isolated" against a cross-margin position (or vice versa).
+  let marginMode = input.marginMode;
+  let posSide = input.posSide;
+  if (!marginMode || !posSide) {
+    const positions = await fetchPerpPositions().catch(() => [] as PerpPositionData[]);
+    const match = positions.find(
+      (p) => p.instId === input.instId && (!posSide || posSide === "net" || p.posSide === posSide),
+    );
+    if (!match) {
+      throw new OkxError("NO_POSITION", `No open position to close on ${input.instId}`, 404);
+    }
+    if (!marginMode) marginMode = match.marginMode;
+    if (!posSide) posSide = match.posSide;
+  }
+  const body: Record<string, string> = {
+    instId: input.instId,
+    mgnMode: marginMode,
+  };
+  if (posSide && posSide !== "net") body["posSide"] = posSide;
+  type Row = { instId: string };
+  await okxRequest<Row[]>("POST", "/api/v5/trade/close-position", { body });
+  return { instId: input.instId, status: "closed" };
+}
+
 export async function fetchAccountSummary(): Promise<{
   totalEquityUsd: number;
   assetCount: number;

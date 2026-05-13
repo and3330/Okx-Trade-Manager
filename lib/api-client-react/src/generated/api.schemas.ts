@@ -131,8 +131,178 @@ export interface OrderResult {
   message?: string | null;
 }
 
+export interface PerpTicker {
+  instId: string;
+  baseCcy: string;
+  last: number;
+  open24h: number;
+  high24h: number;
+  low24h: number;
+  vol24h: number;
+  changePct24h: number;
+}
+
+export interface PerpInstrument {
+  instId: string;
+  baseCcy: string;
+  ctVal: number;
+  lotSz: number;
+  minSz: number;
+  tickSz: number;
+  maxLeverage: number;
+}
+
+export type PerpPositionPosSide =
+  (typeof PerpPositionPosSide)[keyof typeof PerpPositionPosSide];
+
+export const PerpPositionPosSide = {
+  long: "long",
+  short: "short",
+  net: "net",
+} as const;
+
+export type PerpPositionMarginMode =
+  (typeof PerpPositionMarginMode)[keyof typeof PerpPositionMarginMode];
+
+export const PerpPositionMarginMode = {
+  isolated: "isolated",
+  cross: "cross",
+} as const;
+
+export interface PerpPosition {
+  instId: string;
+  posSide: PerpPositionPosSide;
+  contracts: number;
+  baseQty: number;
+  avgEntryPx: number;
+  markPx: number;
+  unrealizedPnlUsd: number;
+  unrealizedPnlPct: number;
+  marginUsd: number;
+  leverage: number;
+  marginMode: PerpPositionMarginMode;
+  /** @nullable */
+  liquidationPx?: number | null;
+  updatedAt: string;
+}
+
+export type PerpOrderInputSide =
+  (typeof PerpOrderInputSide)[keyof typeof PerpOrderInputSide];
+
+export const PerpOrderInputSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export interface PerpOrderInput {
+  /** Perpetual instrument, e.g. HYPE-USDT-SWAP */
+  instId: string;
+  side: PerpOrderInputSide;
+  /**
+   * USDT margin to commit (notional = margin * leverage)
+   * @minimum 0
+   */
+  marginUsdt: number;
+  /**
+   * @minimum 1
+   * @maximum 125
+   */
+  leverage: number;
+  /** @nullable */
+  takeProfitPrice?: number | null;
+  /** @nullable */
+  stopLossPrice?: number | null;
+}
+
+export type PerpOrderResultSide =
+  (typeof PerpOrderResultSide)[keyof typeof PerpOrderResultSide];
+
+export const PerpOrderResultSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export interface PerpOrderResult {
+  ordId: string;
+  instId: string;
+  side: PerpOrderResultSide;
+  contracts: number;
+  notionalUsd: number;
+  markPx: number;
+  leverage: number;
+  status: string;
+  /** @nullable */
+  message?: string | null;
+}
+
+/**
+ * @nullable
+ */
+export type ClosePerpInputPosSide =
+  | (typeof ClosePerpInputPosSide)[keyof typeof ClosePerpInputPosSide]
+  | null;
+
+export const ClosePerpInputPosSide = {
+  long: "long",
+  short: "short",
+  net: "net",
+} as const;
+
+/**
+ * @nullable
+ */
+export type ClosePerpInputMarginMode =
+  | (typeof ClosePerpInputMarginMode)[keyof typeof ClosePerpInputMarginMode]
+  | null;
+
+export const ClosePerpInputMarginMode = {
+  isolated: "isolated",
+  cross: "cross",
+} as const;
+
+export interface ClosePerpInput {
+  instId: string;
+  /** @nullable */
+  posSide?: ClosePerpInputPosSide;
+  /** @nullable */
+  marginMode?: ClosePerpInputMarginMode;
+}
+
+export interface ClosePerpResult {
+  instId: string;
+  status: string;
+}
+
+/**
+ * spot (default) or perp - changes the prompt for the AI
+ * @nullable
+ */
+export type AiAnalysisInputMode =
+  | (typeof AiAnalysisInputMode)[keyof typeof AiAnalysisInputMode]
+  | null;
+
+export const AiAnalysisInputMode = {
+  spot: "spot",
+  perp: "perp",
+} as const;
+
 export interface AiAnalysisInput {
   instId: string;
+  /**
+   * spot (default) or perp - changes the prompt for the AI
+   * @nullable
+   */
+  mode?: AiAnalysisInputMode;
+  /**
+   * For perp mode, max USDT margin the AI may suggest committing
+   * @nullable
+   */
+  marginUsdt?: number | null;
+  /**
+   * For perp mode, max leverage the AI may suggest
+   * @nullable
+   */
+  maxLeverage?: number | null;
 }
 
 export interface AiAnalysis {
@@ -154,6 +324,9 @@ export const AiRecommendationAction = {
   buy: "buy",
   sell: "sell",
   hold: "hold",
+  long: "long",
+  short: "short",
+  close: "close",
 } as const;
 
 export interface AiRecommendation {
@@ -169,12 +342,27 @@ export interface AiRecommendation {
   /** @nullable */
   action?: AiRecommendationAction;
   /**
-   * Suggested USDT notional for the trade (null if hold)
+   * Spot mode - suggested USDT notional. Perp mode - leave null.
    * @nullable
    */
   sizeUsdt?: number | null;
+  /**
+   * Perp mode - suggested USDT margin (notional = margin * leverage)
+   * @nullable
+   */
+  marginUsdt?: number | null;
+  /**
+   * Perp mode - suggested leverage (1 to maxLeverage)
+   * @nullable
+   */
+  leverage?: number | null;
   /** @nullable */
   stopLossPrice?: number | null;
+  /**
+   * Perp mode - optional take-profit trigger price
+   * @nullable
+   */
+  takeProfitPrice?: number | null;
   /**
    * 1-10 self-reported confidence
    * @nullable

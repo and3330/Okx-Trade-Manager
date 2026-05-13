@@ -5,7 +5,23 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AiAnalysisInputMode } from "./aiAnalysisInputMode";
 
 export interface AiAnalysisInput {
   instId: string;
+  /**
+   * spot (default) or perp - changes the prompt for the AI
+   * @nullable
+   */
+  mode?: AiAnalysisInputMode;
+  /**
+   * For perp mode, max USDT margin the AI may suggest committing
+   * @nullable
+   */
+  marginUsdt?: number | null;
+  /**
+   * For perp mode, max leverage the AI may suggest
+   * @nullable
+   */
+  maxLeverage?: number | null;
 }

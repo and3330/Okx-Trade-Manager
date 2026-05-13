@@ -12,10 +12,14 @@ import {
   fetchTicker,
   fetchCandles,
   fetchAccountBalance,
+  fetchPerpInstrument,
+  fetchPerpPositions,
   OkxError,
   type TickerData,
   type CandleData,
   type AccountBalanceData,
+  type PerpPositionData,
+  type PerpInstrumentMeta,
 } from "../lib/okx";
 
 const router: IRouter = Router();
@@ -126,6 +130,84 @@ ${ctx}
 最後加一行免責聲明,說明這不是投資建議。數字直接寫,不要使用 emoji。`;
 }
 
+function buildPerpContext(
+  instId: string,
+  ticker: TickerData,
+  candles: CandleData[],
+  meta: PerpInstrumentMeta,
+  position: PerpPositionData | null,
+  heldUsdt: number,
+): string {
+  const recent = candles.slice(-48);
+  const candleLines = recent
+    .map(
+      (c) =>
+        `${c.ts.slice(5, 16).replace("T", " ")}  O:${c.open}  H:${c.high}  L:${c.low}  C:${c.close}  V:${c.volume.toFixed(2)}`,
+    )
+    .join("\n");
+
+  const posCtx = position
+    ? `現有倉位:${position.posSide === "short" || position.contracts < 0 ? "Short" : "Long"} ${Math.abs(position.contracts)} 張(約 ${Math.abs(position.baseQty).toFixed(4)} ${meta.baseCcy}),均價 ${position.avgEntryPx},${position.leverage}x ${position.marginMode},未實現損益 ${position.unrealizedPnlUsd.toFixed(2)} USDT (${position.unrealizedPnlPct.toFixed(2)}%)`
+    : "目前無倉位。";
+
+  return `合約:${instId} (OKX USDT 本位永續, 最高槓桿 ${meta.maxLeverage}x, 每張 ${meta.ctVal} ${meta.baseCcy}, 最小 ${meta.minSz} 張, 跳動價 ${meta.tickSz})
+
+當前行情:
+- 最新價:${ticker.last}
+- 24h 漲跌:${ticker.changePct24h.toFixed(2)}%
+- 24h 高/低:${ticker.high24h} / ${ticker.low24h}
+- 24h 成交量(張):${ticker.vol24h}
+
+近 48 根 1H K 線(舊 -> 新):
+${candleLines}
+
+帳戶狀況:
+- 可用 USDT 保證金:${heldUsdt}
+- ${posCtx}`;
+}
+
+function buildPerpRecommendPrompt(
+  ctx: string,
+  instId: string,
+  baseCcy: string,
+  heldUsdt: number,
+  lastPrice: number,
+  hasPosition: boolean,
+  posSide: "long" | "short" | null,
+  maxMarginUsdt: number,
+  maxLeverage: number,
+): string {
+  const closeNote = hasPosition
+    ? `若認為應該停利/停損平倉,action 用 "close",其它金額/槓桿/止盈止損都填 null。`
+    : `目前無倉位,不要回 "close"。`;
+  return `你是一位有紀律的合約短線交易員,在 OKX 永續合約 (${instId}) 上做決策。
+
+${ctx}
+
+請針對接下來幾小時決定一個具體動作:long(做多)、short(做空)、close(平倉)、或 hold(觀望)。
+
+限制:
+- ${closeNote}
+- 開新倉時 marginUsdt 必須 > 0 且 <= ${maxMarginUsdt.toFixed(2)} USDT(受限於可用保證金與 200 USDT 上限)。
+- leverage 必須是 1 到 ${maxLeverage} 之間的整數,槓桿越高風險越大。
+- 名目部位 = marginUsdt × leverage。建議搭配止盈/止損控管風險。
+- takeProfitPrice 與 stopLossPrice 為觸發價:做多時 TP 必須 > 最新價 (${lastPrice})、SL 必須 < 最新價;做空相反。不需要設可填 null。
+- ${hasPosition ? `已有 ${posSide} 倉位,如果想加倉請用同方向動作;如果方向相反請先 close 再開新倉(本次 prompt 只能回一個動作,先選最重要的)。` : ""}
+- confidence:1-10 整數。
+- reasoning:用繁體中文 2-4 句解釋,純文字無 markdown。
+
+只回傳一個 JSON 物件,結構嚴格符合(不需要的欄位請填 null,不要省略):
+{
+  "action": "long" | "short" | "close" | "hold",
+  "marginUsdt": number | null,
+  "leverage": integer | null,
+  "takeProfitPrice": number | null,
+  "stopLossPrice": number | null,
+  "confidence": integer,
+  "reasoning": string
+}`;
+}
+
 function buildRecommendPrompt(
   ctx: string,
   instId: string,
@@ -164,6 +246,9 @@ ${ctx}
 type RawDecision = {
   action?: unknown;
   sizeUsdt?: unknown;
+  marginUsdt?: unknown;
+  leverage?: unknown;
+  takeProfitPrice?: unknown;
   stopLossPrice?: unknown;
   confidence?: unknown;
   reasoning?: unknown;
@@ -237,6 +322,82 @@ function normalizeDecision(
   const reasoning = typeof d.reasoning === "string" ? d.reasoning.trim() : "";
 
   return { action, sizeUsdt, stopLossPrice, confidence, reasoning };
+}
+
+function normalizePerpDecision(
+  d: RawDecision,
+  caps: {
+    lastPrice: number;
+    heldUsdt: number;
+    maxMarginUsdt: number;
+    maxLeverage: number;
+    hasPosition: boolean;
+    posSide: "long" | "short" | null;
+  },
+): {
+  action: "long" | "short" | "close" | "hold";
+  marginUsdt: number | null;
+  leverage: number | null;
+  takeProfitPrice: number | null;
+  stopLossPrice: number | null;
+  sizeUsdt: number | null;
+  confidence: number | null;
+  reasoning: string;
+} {
+  const actionRaw = String(d.action ?? "").toLowerCase();
+  let action: "long" | "short" | "close" | "hold" =
+    actionRaw === "long" || actionRaw === "short" || actionRaw === "close" || actionRaw === "hold"
+      ? actionRaw
+      : "hold";
+
+  // Can't close if no position
+  if (action === "close" && !caps.hasPosition) action = "hold";
+  // Can't open if no margin
+  if ((action === "long" || action === "short") && caps.heldUsdt <= 0) action = "hold";
+
+  let marginUsdt: number | null = null;
+  let leverage: number | null = null;
+  let takeProfitPrice: number | null = null;
+  let stopLossPrice: number | null = null;
+
+  if (action === "long" || action === "short") {
+    if (typeof d.marginUsdt === "number" && d.marginUsdt > 0) {
+      marginUsdt = Math.min(d.marginUsdt, caps.maxMarginUsdt);
+    }
+    if (typeof d.leverage === "number" && d.leverage >= 1) {
+      leverage = Math.max(1, Math.min(caps.maxLeverage, Math.round(d.leverage)));
+    }
+    if (!marginUsdt || !leverage) {
+      action = "hold";
+      marginUsdt = null;
+      leverage = null;
+    } else {
+      // TP/SL: must be on correct side of price
+      if (typeof d.takeProfitPrice === "number" && d.takeProfitPrice > 0) {
+        if (action === "long" && d.takeProfitPrice > caps.lastPrice) takeProfitPrice = d.takeProfitPrice;
+        if (action === "short" && d.takeProfitPrice < caps.lastPrice) takeProfitPrice = d.takeProfitPrice;
+      }
+      if (typeof d.stopLossPrice === "number" && d.stopLossPrice > 0) {
+        if (action === "long" && d.stopLossPrice < caps.lastPrice) stopLossPrice = d.stopLossPrice;
+        if (action === "short" && d.stopLossPrice > caps.lastPrice) stopLossPrice = d.stopLossPrice;
+      }
+    }
+  }
+
+  const confRaw = typeof d.confidence === "number" ? Math.round(d.confidence) : null;
+  const confidence = confRaw == null ? null : Math.max(1, Math.min(10, confRaw));
+  const reasoning = typeof d.reasoning === "string" ? d.reasoning.trim() : "";
+
+  return {
+    action,
+    marginUsdt,
+    leverage,
+    takeProfitPrice,
+    stopLossPrice,
+    sizeUsdt: null,
+    confidence,
+    reasoning,
+  };
 }
 
 type ProviderRunner = (prompt: string) => Promise<string>;
@@ -358,8 +519,104 @@ router.post("/okx/ai/recommend", async (req, res): Promise<void> => {
     return;
   }
   const { instId } = parsed.data;
+  const mode = parsed.data.mode === "perp" ? "perp" : "spot";
+  const userMaxMargin =
+    typeof parsed.data.marginUsdt === "number" && parsed.data.marginUsdt > 0
+      ? parsed.data.marginUsdt
+      : 200;
+  const userMaxLev =
+    typeof parsed.data.maxLeverage === "number" && parsed.data.maxLeverage > 0
+      ? parsed.data.maxLeverage
+      : 20;
 
   try {
+    if (mode === "perp") {
+      const [ticker, candles, balance, meta, positions] = await Promise.all([
+        fetchTicker(instId),
+        fetchCandles(instId),
+        fetchAccountBalance().catch(() => null),
+        fetchPerpInstrument(instId),
+        fetchPerpPositions().catch(() => [] as PerpPositionData[]),
+      ]);
+      const heldUsdt = balance?.assets.find((a) => a.ccy === "USDT")?.available ?? 0;
+      const position = positions.find((p) => p.instId === instId) ?? null;
+      const posSide: "long" | "short" | null = position
+        ? position.posSide === "short" || position.contracts < 0
+          ? "short"
+          : "long"
+        : null;
+      const maxLeverage = Math.min(userMaxLev, meta.maxLeverage);
+      const maxMarginUsdt = Math.min(userMaxMargin, heldUsdt > 0 ? heldUsdt : userMaxMargin);
+      const ctx = buildPerpContext(instId, ticker, candles, meta, position, heldUsdt);
+      const prompt = buildPerpRecommendPrompt(
+        ctx,
+        instId,
+        meta.baseCcy,
+        heldUsdt,
+        ticker.last,
+        !!position,
+        posSide,
+        maxMarginUsdt,
+        maxLeverage,
+      );
+
+      const recommendations = await Promise.all(
+        PROVIDERS.map(async (p) => {
+          const startedAt = Date.now();
+          try {
+            const raw = await p.run(prompt);
+            if (!raw.trim()) throw new Error("Empty response");
+            const decision = normalizePerpDecision(parseDecision(raw), {
+              lastPrice: ticker.last,
+              heldUsdt,
+              maxMarginUsdt,
+              maxLeverage,
+              hasPosition: !!position,
+              posSide,
+            });
+            return {
+              providerId: p.id,
+              providerLabel: p.label,
+              model: p.model,
+              latencyMs: Date.now() - startedAt,
+              ok: true as const,
+              error: null,
+              ...decision,
+            };
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            req.log.warn({ provider: p.id, err: msg }, "ai perp recommend provider failed");
+            return {
+              providerId: p.id,
+              providerLabel: p.label,
+              model: p.model,
+              latencyMs: Date.now() - startedAt,
+              ok: false as const,
+              error: msg,
+              action: null,
+              sizeUsdt: null,
+              marginUsdt: null,
+              leverage: null,
+              takeProfitPrice: null,
+              stopLossPrice: null,
+              confidence: null,
+              reasoning: null,
+            };
+          }
+        }),
+      );
+
+      res.json(
+        RecommendTradeResponse.parse({
+          instId,
+          generatedAt: new Date().toISOString(),
+          lastPrice: ticker.last,
+          recommendations,
+        }),
+      );
+      return;
+    }
+
     const [ticker, candles, balance] = await Promise.all([
       fetchTicker(instId),
       fetchCandles(instId),

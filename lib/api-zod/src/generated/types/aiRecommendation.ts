@@ -20,12 +20,27 @@ export interface AiRecommendation {
   /** @nullable */
   action?: AiRecommendationAction;
   /**
-   * Suggested USDT notional for the trade (null if hold)
+   * Spot mode - suggested USDT notional. Perp mode - leave null.
    * @nullable
    */
   sizeUsdt?: number | null;
+  /**
+   * Perp mode - suggested USDT margin (notional = margin * leverage)
+   * @nullable
+   */
+  marginUsdt?: number | null;
+  /**
+   * Perp mode - suggested leverage (1 to maxLeverage)
+   * @nullable
+   */
+  leverage?: number | null;
   /** @nullable */
   stopLossPrice?: number | null;
+  /**
+   * Perp mode - optional take-profit trigger price
+   * @nullable
+   */
+  takeProfitPrice?: number | null;
   /**
    * 1-10 self-reported confidence
    * @nullable
