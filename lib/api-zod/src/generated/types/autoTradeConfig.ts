@@ -9,6 +9,9 @@
 export interface AutoTradeConfig {
   enabled: boolean;
   whitelist: string[];
+  scannerEnabled: boolean;
+  scannerPickCount: number;
+  scannerMinVolUsd24h: number;
   maxMarginPctPerTrade: number;
   maxDailyLossPct: number;
   maxConcurrentPositions: number;

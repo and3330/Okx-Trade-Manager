@@ -555,6 +555,39 @@ export async function fetchPerpInstrument(instId: string): Promise<PerpInstrumen
 
 export type PerpTickerData = TickerData & { baseCcy: string };
 
+export type AllPerpTickerRow = {
+  instId: string;
+  baseCcy: string;
+  last: number;
+  changePct24h: number;
+  volUsd24h: number;
+};
+
+export async function fetchAllPerpTickers(): Promise<AllPerpTickerRow[]> {
+  const rows = await okxRequest<OkxTickerRow[]>(
+    "GET",
+    "/api/v5/market/tickers",
+    { query: { instType: "SWAP" }, signed: false },
+  );
+  const out: AllPerpTickerRow[] = [];
+  for (const r of rows) {
+    if (!r.instId.endsWith("-USDT-SWAP")) continue;
+    const last = num(r.last);
+    const open = num(r.open24h);
+    if (last <= 0) continue;
+    const changePct = open > 0 ? ((last - open) / open) * 100 : 0;
+    const volUsd = num(r.volCcy24h) * last;
+    out.push({
+      instId: r.instId,
+      baseCcy: r.instId.replace("-USDT-SWAP", ""),
+      last,
+      changePct24h: changePct,
+      volUsd24h: volUsd,
+    });
+  }
+  return out;
+}
+
 export async function fetchTopPerpTickers(): Promise<PerpTickerData[]> {
   const rows = await okxRequest<OkxTickerRow[]>(
     "GET",

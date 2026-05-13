@@ -416,6 +416,9 @@ export interface ResearchResult {
 export interface AutoTradeConfig {
   enabled: boolean;
   whitelist: string[];
+  scannerEnabled: boolean;
+  scannerPickCount: number;
+  scannerMinVolUsd24h: number;
   maxMarginPctPerTrade: number;
   maxDailyLossPct: number;
   maxConcurrentPositions: number;
@@ -433,6 +436,12 @@ export interface AutoTradeConfigInput {
   enabled?: boolean | null;
   /** @nullable */
   whitelist?: string[] | null;
+  /** @nullable */
+  scannerEnabled?: boolean | null;
+  /** @nullable */
+  scannerPickCount?: number | null;
+  /** @nullable */
+  scannerMinVolUsd24h?: number | null;
   /** @nullable */
   maxMarginPctPerTrade?: number | null;
   /** @nullable */

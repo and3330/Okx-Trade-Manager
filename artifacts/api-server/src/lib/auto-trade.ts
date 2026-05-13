@@ -3,6 +3,7 @@ import { eq, gte, desc, sql } from "drizzle-orm";
 import { logger } from "./logger";
 import {
   runResearchPipeline,
+  runMarketScanner,
   computeConsensus,
   type AiRecommendation,
   PROVIDERS,
@@ -23,6 +24,9 @@ const SINGLETON_ID = 1;
 export type AutoTradeConfig = {
   enabled: boolean;
   whitelist: string[];
+  scannerEnabled: boolean;
+  scannerPickCount: number;
+  scannerMinVolUsd24h: number;
   maxMarginPctPerTrade: number;
   maxDailyLossPct: number;
   maxConcurrentPositions: number;
@@ -40,14 +44,11 @@ const DEFAULT_CONFIG: Omit<AutoTradeConfig, "updatedAt" | "killUntil"> = {
     "BTC-USDT-SWAP",
     "ETH-USDT-SWAP",
     "SOL-USDT-SWAP",
-    "HYPE-USDT-SWAP",
     "BNB-USDT-SWAP",
-    "XRP-USDT-SWAP",
-    "DOGE-USDT-SWAP",
-    "AVAX-USDT-SWAP",
-    "SUI-USDT-SWAP",
-    "LINK-USDT-SWAP",
   ],
+  scannerEnabled: true,
+  scannerPickCount: 3,
+  scannerMinVolUsd24h: 50_000_000,
   maxMarginPctPerTrade: 5,
   maxDailyLossPct: 10,
   maxConcurrentPositions: 3,
@@ -61,6 +62,9 @@ function rowToConfig(row: typeof autoTradeConfigTable.$inferSelect): AutoTradeCo
   return {
     enabled: row.enabled,
     whitelist: row.whitelist ?? DEFAULT_CONFIG.whitelist,
+    scannerEnabled: row.scannerEnabled,
+    scannerPickCount: row.scannerPickCount,
+    scannerMinVolUsd24h: parseFloat(row.scannerMinVolUsd24h as unknown as string),
     maxMarginPctPerTrade: parseFloat(row.maxMarginPctPerTrade as unknown as string),
     maxDailyLossPct: parseFloat(row.maxDailyLossPct as unknown as string),
     maxConcurrentPositions: row.maxConcurrentPositions,
@@ -81,6 +85,9 @@ export async function getOrCreateConfig(): Promise<AutoTradeConfig> {
     id: SINGLETON_ID,
     enabled: DEFAULT_CONFIG.enabled,
     whitelist: DEFAULT_CONFIG.whitelist,
+    scannerEnabled: DEFAULT_CONFIG.scannerEnabled,
+    scannerPickCount: DEFAULT_CONFIG.scannerPickCount,
+    scannerMinVolUsd24h: String(DEFAULT_CONFIG.scannerMinVolUsd24h),
     maxMarginPctPerTrade: String(DEFAULT_CONFIG.maxMarginPctPerTrade),
     maxDailyLossPct: String(DEFAULT_CONFIG.maxDailyLossPct),
     maxConcurrentPositions: DEFAULT_CONFIG.maxConcurrentPositions,
@@ -96,6 +103,9 @@ export async function getOrCreateConfig(): Promise<AutoTradeConfig> {
 export type ConfigPatch = {
   enabled?: boolean | null;
   whitelist?: string[] | null;
+  scannerEnabled?: boolean | null;
+  scannerPickCount?: number | null;
+  scannerMinVolUsd24h?: number | null;
   maxMarginPctPerTrade?: number | null;
   maxDailyLossPct?: number | null;
   maxConcurrentPositions?: number | null;
@@ -109,7 +119,16 @@ export async function updateConfig(patch: ConfigPatch): Promise<AutoTradeConfig>
   await getOrCreateConfig();
   const update: Record<string, unknown> = { updatedAt: new Date() };
   if (patch.enabled != null) update["enabled"] = patch.enabled;
-  if (patch.whitelist != null) update["whitelist"] = patch.whitelist;
+  if (patch.whitelist != null) {
+    // Sanitize: only valid OKX perp instId format, prevents arbitrary text reaching scanner prompts
+    const valid = patch.whitelist
+      .map((s) => s.trim().toUpperCase())
+      .filter((s) => /^[A-Z0-9]{1,12}-USDT-SWAP$/.test(s));
+    update["whitelist"] = Array.from(new Set(valid));
+  }
+  if (patch.scannerEnabled != null) update["scannerEnabled"] = patch.scannerEnabled;
+  if (patch.scannerPickCount != null) update["scannerPickCount"] = Math.max(0, Math.min(10, patch.scannerPickCount));
+  if (patch.scannerMinVolUsd24h != null) update["scannerMinVolUsd24h"] = String(Math.max(0, patch.scannerMinVolUsd24h));
   if (patch.maxMarginPctPerTrade != null) update["maxMarginPctPerTrade"] = String(patch.maxMarginPctPerTrade);
   if (patch.maxDailyLossPct != null) update["maxDailyLossPct"] = String(patch.maxDailyLossPct);
   if (patch.maxConcurrentPositions != null) update["maxConcurrentPositions"] = patch.maxConcurrentPositions;
@@ -236,7 +255,32 @@ export async function runCycle(opts: { force?: boolean } = {}): Promise<RunCycle
     const heldUsdt = balance.assets.find((a) => a.ccy === "USDT")?.available ?? 0;
     const openCount = positions.length;
 
-    for (const instId of cfg.whitelist) {
+    // Stage 0: market scanner (fail-safe — falls back to core whitelist only on any error)
+    const finalInstruments: string[] = [...cfg.whitelist];
+    if (cfg.scannerEnabled && cfg.scannerPickCount > 0) {
+      try {
+        const scan = await runMarketScanner({
+          pickCount: cfg.scannerPickCount,
+          minVolUsd24h: cfg.scannerMinVolUsd24h,
+          exclude: cfg.whitelist,
+        });
+        if (scan.error) {
+          logger.warn({ error: scan.error, considered: scan.candidatesConsidered }, "scanner produced no picks");
+          out.push({ instId: "scanner", action: "skipped", reason: `scanner_${scan.error}`, executionId: null });
+        } else {
+          for (const id of scan.picks) {
+            if (!finalInstruments.includes(id)) finalInstruments.push(id);
+          }
+          out.push({ instId: "scanner", action: "scanner_picked", reason: scan.picks.join(","), executionId: null });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err }, "scanner threw, falling back to core only");
+        out.push({ instId: "scanner", action: "error", reason: msg, executionId: null });
+      }
+    }
+
+    for (const instId of finalInstruments) {
       try {
         const entry = await processInstrument({
           cfg, instId, balance, heldUsdt, positions, openCount: openCount + out.filter((e) => e.action === "executed_open").length,

@@ -899,7 +899,7 @@ components:
 
     AutoTradeConfig:
       type: object
-      required: [enabled, whitelist, maxMarginPctPerTrade, maxDailyLossPct, maxConcurrentPositions, maxLeverage, minConsensusCount, minAvgConfidence, cooldownMinutes, updatedAt]
+      required: [enabled, whitelist, scannerEnabled, scannerPickCount, scannerMinVolUsd24h, maxMarginPctPerTrade, maxDailyLossPct, maxConcurrentPositions, maxLeverage, minConsensusCount, minAvgConfidence, cooldownMinutes, updatedAt]
       properties:
         enabled:
           type: boolean
@@ -907,6 +907,12 @@ components:
           type: array
           items:
             type: string
+        scannerEnabled:
+          type: boolean
+        scannerPickCount:
+          type: integer
+        scannerMinVolUsd24h:
+          type: number
         maxMarginPctPerTrade:
           type: number
         maxDailyLossPct:
@@ -935,6 +941,12 @@ components:
           type: ["array", "null"]
           items:
             type: string
+        scannerEnabled:
+          type: ["boolean", "null"]
+        scannerPickCount:
+          type: ["integer", "null"]
+        scannerMinVolUsd24h:
+          type: ["number", "null"]
         maxMarginPctPerTrade:
           type: ["number", "null"]
         maxDailyLossPct:

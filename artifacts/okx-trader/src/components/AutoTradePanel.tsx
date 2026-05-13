@@ -21,6 +21,9 @@ import { format } from "date-fns";
 type Cfg = {
   enabled: boolean;
   whitelist: string[];
+  scannerEnabled: boolean;
+  scannerPickCount: number;
+  scannerMinVolUsd24h: number;
   maxMarginPctPerTrade: number;
   maxDailyLossPct: number;
   maxConcurrentPositions: number;
@@ -75,6 +78,9 @@ export default function AutoTradePanel() {
         data: {
           enabled: draft.enabled,
           whitelist: draft.whitelist,
+          scannerEnabled: draft.scannerEnabled,
+          scannerPickCount: Number(draft.scannerPickCount),
+          scannerMinVolUsd24h: Number(draft.scannerMinVolUsd24h),
           maxMarginPctPerTrade: Number(draft.maxMarginPctPerTrade),
           maxDailyLossPct: Number(draft.maxDailyLossPct),
           maxConcurrentPositions: Number(draft.maxConcurrentPositions),
@@ -201,7 +207,7 @@ export default function AutoTradePanel() {
         </div>
 
         <div>
-          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">白名單（永續 instId，用逗號分隔）</Label>
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">核心白名單（每小時固定跑，永續 instId 用逗號分隔）</Label>
           <Input
             className="h-8 text-xs font-mono mt-1"
             value={draft.whitelist.join(",")}
@@ -212,6 +218,40 @@ export default function AutoTradePanel() {
               })
             }
           />
+        </div>
+
+        <div className="border-t border-border pt-3 mt-3 space-y-3">
+          <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">機會幣掃描器（Stage 0）</div>
+
+          <div className="flex items-center justify-between border border-border rounded-md p-2 bg-background/40">
+            <div>
+              <div className="text-xs font-semibold">啟用 Claude 全市場掃描</div>
+              <div className="text-[10px] text-muted-foreground">每輪先從全市場挑機會幣加入分析</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDraft({ ...draft, scannerEnabled: !draft.scannerEnabled })}
+              className={cn(
+                "relative h-5 w-10 rounded-full transition-colors",
+                draft.scannerEnabled ? "bg-[#00e59b]" : "bg-muted",
+              )}
+            >
+              <span className={cn(
+                "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
+                draft.scannerEnabled ? "translate-x-5" : "translate-x-0.5",
+              )} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <NumField label="挑選數量 (0-10)" value={draft.scannerPickCount} step={1}
+              onChange={(v) => setDraft({ ...draft, scannerPickCount: v })} />
+            <NumField label="最低 24h 量 (USD)" value={draft.scannerMinVolUsd24h} step={10_000_000}
+              onChange={(v) => setDraft({ ...draft, scannerMinVolUsd24h: v })} />
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            每輪總標的 = 核心 {draft.whitelist.length} + 掃描挑 {draft.scannerEnabled ? draft.scannerPickCount : 0} = 約 {draft.whitelist.length + (draft.scannerEnabled ? draft.scannerPickCount : 0)} 個
+          </div>
         </div>
 
         <Button onClick={save} disabled={updateMut.isPending} className="w-full h-9 bg-[#00e59b] text-[#003d29] hover:bg-[#00cc8a] font-bold uppercase tracking-wider">

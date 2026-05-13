@@ -12,6 +12,12 @@ export interface AutoTradeConfigInput {
   /** @nullable */
   whitelist?: string[] | null;
   /** @nullable */
+  scannerEnabled?: boolean | null;
+  /** @nullable */
+  scannerPickCount?: number | null;
+  /** @nullable */
+  scannerMinVolUsd24h?: number | null;
+  /** @nullable */
   maxMarginPctPerTrade?: number | null;
   /** @nullable */
   maxDailyLossPct?: number | null;

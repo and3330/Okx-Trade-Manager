@@ -12,6 +12,7 @@ import {
   summarizeIndicators,
   summarizeMarketContext,
   fetchAtr,
+  fetchAllPerpTickers,
   type TickerData,
   type CandleData,
   type AccountBalanceData,
@@ -252,6 +253,85 @@ export function normalizePerpDecision(
   const confidence = confRaw == null ? null : Math.max(1, Math.min(10, confRaw));
   const reasoning = typeof d.reasoning === "string" ? d.reasoning.trim() : "";
   return { action, marginUsdt, leverage, takeProfitPrice, stopLossPrice, sizeUsdt: null, confidence, reasoning };
+}
+
+// ---------- Stage 0: Market scanner ----------
+
+export type ScannerResult = {
+  picks: string[];
+  candidatesConsidered: number;
+  rawResponse: string | null;
+  error: string | null;
+};
+
+export async function runMarketScanner(opts: {
+  pickCount: number;
+  minVolUsd24h: number;
+  exclude: string[];
+}): Promise<ScannerResult> {
+  const { pickCount, minVolUsd24h, exclude } = opts;
+  const target = Math.max(1, Math.min(10, pickCount));
+  const excludeSet = new Set(exclude);
+  let universe: Awaited<ReturnType<typeof fetchAllPerpTickers>>;
+  try {
+    universe = await fetchAllPerpTickers();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { picks: [], candidatesConsidered: 0, rawResponse: null, error: `fetch_universe_failed: ${msg}` };
+  }
+  const candidates = universe
+    .filter((t) => t.volUsd24h >= minVolUsd24h && !excludeSet.has(t.instId))
+    .sort((a, b) => b.volUsd24h - a.volUsd24h)
+    .slice(0, 80); // cap prompt size
+  if (candidates.length === 0) {
+    return { picks: [], candidatesConsidered: 0, rawResponse: null, error: "no_candidates" };
+  }
+  const tableLines = candidates.map((c) =>
+    `${c.baseCcy.padEnd(8)} px=${c.last} 24h=${c.changePct24h.toFixed(2)}% volUsd=${(c.volUsd24h / 1_000_000).toFixed(1)}M`
+  ).join("\n");
+  const coreList = exclude.length > 0 ? exclude.map((s) => s.replace("-USDT-SWAP", "")).join(", ") : "(無)";
+  const prompt = `你是一位永續合約市場掃描員。下方是 OKX 上 24h 成交額 >= ${(minVolUsd24h / 1_000_000).toFixed(0)}M USDT 的 USDT 永續合約清單(已按量排序),請從中挑出最值得進一步深入分析的 ${target} 個機會幣。
+
+已經會固定分析的核心幣(請勿重複): ${coreList}
+
+候選清單(共 ${candidates.length} 個):
+${tableLines}
+
+挑選原則(由強到弱):
+1. 24h 漲跌出現異常動能(顯著放量配合方向性突破),不要只追漲幅
+2. 有明確的多空訊號可以給技術分析師接著看,不要選盤整無方向的
+3. 流動性夠(已過濾,但仍以高量者優先)
+4. 多樣化,避免全選同類型(例如不要 4 個都是 meme)
+
+只回 JSON,不要多餘文字,結構:
+{"picks":["XXX-USDT-SWAP", ...],"reasoning":"一句話說明這批挑選的整體邏輯"}
+
+picks 必須是 ${target} 個 instId 字串(必須出現在候選清單中,結尾必須是 -USDT-SWAP)。`;
+  let raw: string;
+  try {
+    raw = await PROVIDERS[0]!.run(prompt, true);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { picks: [], candidatesConsidered: candidates.length, rawResponse: null, error: `claude_failed: ${msg}` };
+  }
+  let parsed: { picks?: unknown };
+  try {
+    parsed = parseDecision(raw) as { picks?: unknown };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { picks: [], candidatesConsidered: candidates.length, rawResponse: raw, error: `parse_failed: ${msg}` };
+  }
+  const validInstIds = new Set(candidates.map((c) => c.instId));
+  const picks: string[] = [];
+  if (Array.isArray(parsed.picks)) {
+    for (const p of parsed.picks) {
+      if (typeof p !== "string") continue;
+      const id = p.trim();
+      if (validInstIds.has(id) && !picks.includes(id)) picks.push(id);
+      if (picks.length >= target) break;
+    }
+  }
+  return { picks, candidatesConsidered: candidates.length, rawResponse: raw, error: picks.length === 0 ? "empty_picks" : null };
 }
 
 // ---------- Stage 1: Technical agent ----------

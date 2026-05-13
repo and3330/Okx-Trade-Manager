@@ -438,6 +438,9 @@ export const RunResearchPipelineResponse = zod.object({
 export const GetAutoTradeConfigResponse = zod.object({
   enabled: zod.boolean(),
   whitelist: zod.array(zod.string()),
+  scannerEnabled: zod.boolean(),
+  scannerPickCount: zod.number(),
+  scannerMinVolUsd24h: zod.number(),
   maxMarginPctPerTrade: zod.number(),
   maxDailyLossPct: zod.number(),
   maxConcurrentPositions: zod.number(),
@@ -455,6 +458,9 @@ export const GetAutoTradeConfigResponse = zod.object({
 export const UpdateAutoTradeConfigBody = zod.object({
   enabled: zod.boolean().nullish(),
   whitelist: zod.array(zod.string()).nullish(),
+  scannerEnabled: zod.boolean().nullish(),
+  scannerPickCount: zod.number().nullish(),
+  scannerMinVolUsd24h: zod.number().nullish(),
   maxMarginPctPerTrade: zod.number().nullish(),
   maxDailyLossPct: zod.number().nullish(),
   maxConcurrentPositions: zod.number().nullish(),
@@ -467,6 +473,9 @@ export const UpdateAutoTradeConfigBody = zod.object({
 export const UpdateAutoTradeConfigResponse = zod.object({
   enabled: zod.boolean(),
   whitelist: zod.array(zod.string()),
+  scannerEnabled: zod.boolean(),
+  scannerPickCount: zod.number(),
+  scannerMinVolUsd24h: zod.number(),
   maxMarginPctPerTrade: zod.number(),
   maxDailyLossPct: zod.number(),
   maxConcurrentPositions: zod.number(),
