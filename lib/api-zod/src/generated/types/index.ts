@@ -8,6 +8,8 @@
 
 export * from "./accountBalance";
 export * from "./accountSummary";
+export * from "./aiAnalysis";
+export * from "./aiAnalysisInput";
 export * from "./assetBalance";
 export * from "./candle";
 export * from "./errorResponse";

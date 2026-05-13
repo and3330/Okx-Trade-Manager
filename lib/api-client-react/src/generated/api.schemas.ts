@@ -130,3 +130,15 @@ export interface OrderResult {
   /** @nullable */
   message?: string | null;
 }
+
+export interface AiAnalysisInput {
+  instId: string;
+}
+
+export interface AiAnalysis {
+  instId: string;
+  /** Markdown-formatted analysis from the AI model */
+  analysis: string;
+  generatedAt: string;
+  model: string;
+}

@@ -16,6 +16,22 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * @summary AI analysis of the current market for an instrument
+ */
+export const AnalyzeMarketBody = zod.object({
+  instId: zod.string(),
+});
+
+export const AnalyzeMarketResponse = zod.object({
+  instId: zod.string(),
+  analysis: zod
+    .string()
+    .describe("Markdown-formatted analysis from the AI model"),
+  generatedAt: zod.string(),
+  model: zod.string(),
+});
+
+/**
  * @summary Get OKX account balances
  */
 export const GetAccountBalanceResponse = zod.object({
