@@ -25,7 +25,8 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// Same-origin only via Replit proxy; do not enable cross-origin.
+app.use(cors({ origin: false }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

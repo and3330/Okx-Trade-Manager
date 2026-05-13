@@ -6,4 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./accountBalance";
+export * from "./accountSummary";
+export * from "./assetBalance";
+export * from "./candle";
+export * from "./errorResponse";
+export * from "./fill";
+export * from "./fillSide";
 export * from "./healthStatus";
+export * from "./order";
+export * from "./orderInput";
+export * from "./orderInputSide";
+export * from "./orderResult";
+export * from "./orderSide";
+export * from "./ticker";

@@ -14,3 +14,134 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary Get OKX account balances
+ */
+export const GetAccountBalanceResponse = zod.object({
+  totalEquityUsd: zod.number(),
+  assets: zod.array(
+    zod.object({
+      ccy: zod.string(),
+      available: zod.number(),
+      frozen: zod.number(),
+      equityUsd: zod.number(),
+    }),
+  ),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Get a high-level dashboard summary (totals, top assets, P&L hint)
+ */
+export const GetAccountSummaryResponse = zod.object({
+  totalEquityUsd: zod.number(),
+  assetCount: zod.number(),
+  openOrderCount: zod.number(),
+  topAssets: zod.array(
+    zod.object({
+      ccy: zod.string(),
+      available: zod.number(),
+      frozen: zod.number(),
+      equityUsd: zod.number(),
+    }),
+  ),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary List a curated set of top spot tickers
+ */
+export const ListTopTickersResponseItem = zod.object({
+  instId: zod.string(),
+  last: zod.number(),
+  open24h: zod.number(),
+  high24h: zod.number(),
+  low24h: zod.number(),
+  vol24h: zod.number(),
+  changePct24h: zod.number(),
+});
+export const ListTopTickersResponse = zod.array(ListTopTickersResponseItem);
+
+/**
+ * @summary Get a single ticker by instrument id (e.g. BTC-USDT)
+ */
+export const GetTickerParams = zod.object({
+  instId: zod.coerce.string(),
+});
+
+export const GetTickerResponse = zod.object({
+  instId: zod.string(),
+  last: zod.number(),
+  open24h: zod.number(),
+  high24h: zod.number(),
+  low24h: zod.number(),
+  vol24h: zod.number(),
+  changePct24h: zod.number(),
+});
+
+/**
+ * @summary Get recent candles for a chart (1H, last ~100)
+ */
+export const GetCandlesParams = zod.object({
+  instId: zod.coerce.string(),
+});
+
+export const GetCandlesResponseItem = zod.object({
+  ts: zod.string(),
+  open: zod.number(),
+  high: zod.number(),
+  low: zod.number(),
+  close: zod.number(),
+  volume: zod.number(),
+});
+export const GetCandlesResponse = zod.array(GetCandlesResponseItem);
+
+/**
+ * @summary List recent orders (open + filled, last 50)
+ */
+export const ListOrdersResponseItem = zod.object({
+  ordId: zod.string(),
+  instId: zod.string(),
+  side: zod.enum(["buy", "sell"]),
+  ordType: zod.string(),
+  state: zod.string(),
+  sz: zod.number(),
+  px: zod.number().nullish(),
+  avgPx: zod.number().nullish(),
+  notionalUsd: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
+
+/**
+ * @summary Place a market order on a spot pair (with optional stop-loss)
+ */
+export const placeOrderBodyNotionalUsdMin = 0;
+
+export const PlaceOrderBody = zod.object({
+  instId: zod.string().describe("Spot instrument, e.g. BTC-USDT"),
+  side: zod.enum(["buy", "sell"]),
+  notionalUsd: zod
+    .number()
+    .min(placeOrderBodyNotionalUsdMin)
+    .describe("Quote-currency notional to spend\/receive (USDT amount)"),
+  stopLossPrice: zod
+    .number()
+    .nullish()
+    .describe("Optional stop-loss trigger price (attached as algo order)"),
+});
+
+/**
+ * @summary Recent filled trades activity feed
+ */
+export const ListRecentFillsResponseItem = zod.object({
+  tradeId: zod.string(),
+  ordId: zod.string().nullish(),
+  instId: zod.string(),
+  side: zod.enum(["buy", "sell"]),
+  fillSz: zod.number(),
+  fillPx: zod.number(),
+  ts: zod.string(),
+});
+export const ListRecentFillsResponse = zod.array(ListRecentFillsResponseItem);

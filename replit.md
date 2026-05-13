@@ -1,6 +1,10 @@
-# [Project name]
+# OKX Trader
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Single-user web dashboard for OKX cryptocurrency spot trading: live tickers + 1H candle chart, account equity and holdings, market buy/sell orders by USDT notional with optional stop-loss, and recent orders/fills.
+
+## Security note
+
+The API server exposes `/api/okx/*` without authentication and uses your server-side OKX API keys to place real orders. Keep the deployed URL private, and ideally only deploy with IP allow-listing or behind your own auth proxy. Stop-loss is only supported on buy orders (a sell of held base currency leaves no spot position to protect).
 
 ## Run & Operate
 

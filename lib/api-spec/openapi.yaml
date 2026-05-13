@@ -10,6 +10,12 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: account
+    description: OKX account operations
+  - name: market
+    description: OKX market data
+  - name: trade
+    description: OKX trading operations
 paths:
   /healthz:
     get:
@@ -24,6 +30,141 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /okx/account/balance:
+    get:
+      operationId: getAccountBalance
+      tags: [account]
+      summary: Get OKX account balances
+      responses:
+        "200":
+          description: Account balance summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountBalance"
+
+  /okx/account/summary:
+    get:
+      operationId: getAccountSummary
+      tags: [account]
+      summary: Get a high-level dashboard summary (totals, top assets, P&L hint)
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountSummary"
+
+  /okx/market/tickers:
+    get:
+      operationId: listTopTickers
+      tags: [market]
+      summary: List a curated set of top spot tickers
+      responses:
+        "200":
+          description: Ticker list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ticker"
+
+  /okx/market/ticker/{instId}:
+    get:
+      operationId: getTicker
+      tags: [market]
+      summary: Get a single ticker by instrument id (e.g. BTC-USDT)
+      parameters:
+        - name: instId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Single ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticker"
+
+  /okx/market/candles/{instId}:
+    get:
+      operationId: getCandles
+      tags: [market]
+      summary: Get recent candles for a chart (1H, last ~100)
+      parameters:
+        - name: instId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Candle list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Candle"
+
+  /okx/trade/orders:
+    get:
+      operationId: listOrders
+      tags: [trade]
+      summary: List recent orders (open + filled, last 50)
+      responses:
+        "200":
+          description: Order history list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: placeOrder
+      tags: [trade]
+      summary: Place a market order on a spot pair (with optional stop-loss)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Order accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /okx/trade/orders/recent-fills:
+    get:
+      operationId: listRecentFills
+      tags: [trade]
+      summary: Recent filled trades activity feed
+      responses:
+        "200":
+          description: Recent fills
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Fill"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +175,171 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        code:
+          type: ["string", "null"]
+
+    AssetBalance:
+      type: object
+      required: [ccy, available, frozen, equityUsd]
+      properties:
+        ccy:
+          type: string
+        available:
+          type: number
+        frozen:
+          type: number
+        equityUsd:
+          type: number
+
+    AccountBalance:
+      type: object
+      required: [totalEquityUsd, assets, updatedAt]
+      properties:
+        totalEquityUsd:
+          type: number
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetBalance"
+        updatedAt:
+          type: string
+
+    AccountSummary:
+      type: object
+      required: [totalEquityUsd, assetCount, topAssets, openOrderCount, updatedAt]
+      properties:
+        totalEquityUsd:
+          type: number
+        assetCount:
+          type: integer
+        openOrderCount:
+          type: integer
+        topAssets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetBalance"
+        updatedAt:
+          type: string
+
+    Ticker:
+      type: object
+      required: [instId, last, open24h, high24h, low24h, vol24h, changePct24h]
+      properties:
+        instId:
+          type: string
+        last:
+          type: number
+        open24h:
+          type: number
+        high24h:
+          type: number
+        low24h:
+          type: number
+        vol24h:
+          type: number
+        changePct24h:
+          type: number
+
+    Candle:
+      type: object
+      required: [ts, open, high, low, close, volume]
+      properties:
+        ts:
+          type: string
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: number
+
+    Order:
+      type: object
+      required: [ordId, instId, side, ordType, state, sz, createdAt]
+      properties:
+        ordId:
+          type: string
+        instId:
+          type: string
+        side:
+          type: string
+          enum: [buy, sell]
+        ordType:
+          type: string
+        state:
+          type: string
+        sz:
+          type: number
+        px:
+          type: ["number", "null"]
+        avgPx:
+          type: ["number", "null"]
+        notionalUsd:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+
+    Fill:
+      type: object
+      required: [tradeId, instId, side, fillSz, fillPx, ts]
+      properties:
+        tradeId:
+          type: string
+        ordId:
+          type: ["string", "null"]
+        instId:
+          type: string
+        side:
+          type: string
+          enum: [buy, sell]
+        fillSz:
+          type: number
+        fillPx:
+          type: number
+        ts:
+          type: string
+
+    OrderInput:
+      type: object
+      required: [instId, side, notionalUsd]
+      properties:
+        instId:
+          type: string
+          description: Spot instrument, e.g. BTC-USDT
+        side:
+          type: string
+          enum: [buy, sell]
+        notionalUsd:
+          type: number
+          description: Quote-currency notional to spend/receive (USDT amount)
+          minimum: 0
+        stopLossPrice:
+          type: ["number", "null"]
+          description: Optional stop-loss trigger price (attached as algo order)
+
+    OrderResult:
+      type: object
+      required: [ordId, instId, side, status]
+      properties:
+        ordId:
+          type: string
+        instId:
+          type: string
+        side:
+          type: string
+        status:
+          type: string
+        algoId:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]

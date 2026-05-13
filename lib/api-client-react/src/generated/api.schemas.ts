@@ -8,3 +8,125 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+  /** @nullable */
+  code?: string | null;
+}
+
+export interface AssetBalance {
+  ccy: string;
+  available: number;
+  frozen: number;
+  equityUsd: number;
+}
+
+export interface AccountBalance {
+  totalEquityUsd: number;
+  assets: AssetBalance[];
+  updatedAt: string;
+}
+
+export interface AccountSummary {
+  totalEquityUsd: number;
+  assetCount: number;
+  openOrderCount: number;
+  topAssets: AssetBalance[];
+  updatedAt: string;
+}
+
+export interface Ticker {
+  instId: string;
+  last: number;
+  open24h: number;
+  high24h: number;
+  low24h: number;
+  vol24h: number;
+  changePct24h: number;
+}
+
+export interface Candle {
+  ts: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export type OrderSide = (typeof OrderSide)[keyof typeof OrderSide];
+
+export const OrderSide = {
+  buy: "buy",
+  sell: "sell",
+} as const;
+
+export interface Order {
+  ordId: string;
+  instId: string;
+  side: OrderSide;
+  ordType: string;
+  state: string;
+  sz: number;
+  /** @nullable */
+  px?: number | null;
+  /** @nullable */
+  avgPx?: number | null;
+  /** @nullable */
+  notionalUsd?: number | null;
+  createdAt: string;
+}
+
+export type FillSide = (typeof FillSide)[keyof typeof FillSide];
+
+export const FillSide = {
+  buy: "buy",
+  sell: "sell",
+} as const;
+
+export interface Fill {
+  tradeId: string;
+  /** @nullable */
+  ordId?: string | null;
+  instId: string;
+  side: FillSide;
+  fillSz: number;
+  fillPx: number;
+  ts: string;
+}
+
+export type OrderInputSide =
+  (typeof OrderInputSide)[keyof typeof OrderInputSide];
+
+export const OrderInputSide = {
+  buy: "buy",
+  sell: "sell",
+} as const;
+
+export interface OrderInput {
+  /** Spot instrument, e.g. BTC-USDT */
+  instId: string;
+  side: OrderInputSide;
+  /**
+   * Quote-currency notional to spend/receive (USDT amount)
+   * @minimum 0
+   */
+  notionalUsd: number;
+  /**
+   * Optional stop-loss trigger price (attached as algo order)
+   * @nullable
+   */
+  stopLossPrice?: number | null;
+}
+
+export interface OrderResult {
+  ordId: string;
+  instId: string;
+  side: string;
+  status: string;
+  /** @nullable */
+  algoId?: string | null;
+  /** @nullable */
+  message?: string | null;
+}

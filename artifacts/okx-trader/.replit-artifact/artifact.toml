@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "OKX Trader"
+version = "1.0.0"
+id = "artifacts/okx-trader"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24892
+
+[services.development]
+run = "pnpm --filter @workspace/okx-trader run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/okx-trader", "run", "build" ]
+publicDir = "artifacts/okx-trader/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24892"
+BASE_PATH = "/"

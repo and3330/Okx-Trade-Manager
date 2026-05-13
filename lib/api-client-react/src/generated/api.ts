@@ -5,18 +5,32 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  AccountBalance,
+  AccountSummary,
+  Candle,
+  ErrorResponse,
+  Fill,
+  HealthStatus,
+  Order,
+  OrderInput,
+  OrderResult,
+  Ticker,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +106,637 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get OKX account balances
+ */
+export const getGetAccountBalanceUrl = () => {
+  return `/api/okx/account/balance`;
+};
+
+export const getAccountBalance = async (
+  options?: RequestInit,
+): Promise<AccountBalance> => {
+  return customFetch<AccountBalance>(getGetAccountBalanceUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAccountBalanceQueryKey = () => {
+  return [`/api/okx/account/balance`] as const;
+};
+
+export const getGetAccountBalanceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAccountBalance>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAccountBalance>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAccountBalanceQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAccountBalance>>
+  > = ({ signal }) => getAccountBalance({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAccountBalance>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAccountBalanceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAccountBalance>>
+>;
+export type GetAccountBalanceQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get OKX account balances
+ */
+
+export function useGetAccountBalance<
+  TData = Awaited<ReturnType<typeof getAccountBalance>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAccountBalance>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAccountBalanceQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get a high-level dashboard summary (totals, top assets, P&L hint)
+ */
+export const getGetAccountSummaryUrl = () => {
+  return `/api/okx/account/summary`;
+};
+
+export const getAccountSummary = async (
+  options?: RequestInit,
+): Promise<AccountSummary> => {
+  return customFetch<AccountSummary>(getGetAccountSummaryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAccountSummaryQueryKey = () => {
+  return [`/api/okx/account/summary`] as const;
+};
+
+export const getGetAccountSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAccountSummary>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAccountSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAccountSummaryQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAccountSummary>>
+  > = ({ signal }) => getAccountSummary({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAccountSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAccountSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAccountSummary>>
+>;
+export type GetAccountSummaryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a high-level dashboard summary (totals, top assets, P&L hint)
+ */
+
+export function useGetAccountSummary<
+  TData = Awaited<ReturnType<typeof getAccountSummary>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAccountSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAccountSummaryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List a curated set of top spot tickers
+ */
+export const getListTopTickersUrl = () => {
+  return `/api/okx/market/tickers`;
+};
+
+export const listTopTickers = async (
+  options?: RequestInit,
+): Promise<Ticker[]> => {
+  return customFetch<Ticker[]>(getListTopTickersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListTopTickersQueryKey = () => {
+  return [`/api/okx/market/tickers`] as const;
+};
+
+export const getListTopTickersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTopTickers>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listTopTickers>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTopTickersQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTopTickers>>> = ({
+    signal,
+  }) => listTopTickers({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listTopTickers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListTopTickersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listTopTickers>>
+>;
+export type ListTopTickersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List a curated set of top spot tickers
+ */
+
+export function useListTopTickers<
+  TData = Awaited<ReturnType<typeof listTopTickers>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listTopTickers>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListTopTickersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get a single ticker by instrument id (e.g. BTC-USDT)
+ */
+export const getGetTickerUrl = (instId: string) => {
+  return `/api/okx/market/ticker/${instId}`;
+};
+
+export const getTicker = async (
+  instId: string,
+  options?: RequestInit,
+): Promise<Ticker> => {
+  return customFetch<Ticker>(getGetTickerUrl(instId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTickerQueryKey = (instId: string) => {
+  return [`/api/okx/market/ticker/${instId}`] as const;
+};
+
+export const getGetTickerQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTicker>>,
+  TError = ErrorType<unknown>,
+>(
+  instId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTicker>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTickerQueryKey(instId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTicker>>> = ({
+    signal,
+  }) => getTicker(instId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!instId,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getTicker>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetTickerQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTicker>>
+>;
+export type GetTickerQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a single ticker by instrument id (e.g. BTC-USDT)
+ */
+
+export function useGetTicker<
+  TData = Awaited<ReturnType<typeof getTicker>>,
+  TError = ErrorType<unknown>,
+>(
+  instId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTicker>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTickerQueryOptions(instId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get recent candles for a chart (1H, last ~100)
+ */
+export const getGetCandlesUrl = (instId: string) => {
+  return `/api/okx/market/candles/${instId}`;
+};
+
+export const getCandles = async (
+  instId: string,
+  options?: RequestInit,
+): Promise<Candle[]> => {
+  return customFetch<Candle[]>(getGetCandlesUrl(instId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCandlesQueryKey = (instId: string) => {
+  return [`/api/okx/market/candles/${instId}`] as const;
+};
+
+export const getGetCandlesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCandles>>,
+  TError = ErrorType<unknown>,
+>(
+  instId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCandlesQueryKey(instId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCandles>>> = ({
+    signal,
+  }) => getCandles(instId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!instId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCandles>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCandlesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCandles>>
+>;
+export type GetCandlesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get recent candles for a chart (1H, last ~100)
+ */
+
+export function useGetCandles<
+  TData = Awaited<ReturnType<typeof getCandles>>,
+  TError = ErrorType<unknown>,
+>(
+  instId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCandles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCandlesQueryOptions(instId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List recent orders (open + filled, last 50)
+ */
+export const getListOrdersUrl = () => {
+  return `/api/okx/trade/orders`;
+};
+
+export const listOrders = async (options?: RequestInit): Promise<Order[]> => {
+  return customFetch<Order[]>(getListOrdersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListOrdersQueryKey = () => {
+  return [`/api/okx/trade/orders`] as const;
+};
+
+export const getListOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listOrders>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListOrdersQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listOrders>>> = ({
+    signal,
+  }) => listOrders({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listOrders>>
+>;
+export type ListOrdersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List recent orders (open + filled, last 50)
+ */
+
+export function useListOrders<
+  TData = Awaited<ReturnType<typeof listOrders>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListOrdersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Place a market order on a spot pair (with optional stop-loss)
+ */
+export const getPlaceOrderUrl = () => {
+  return `/api/okx/trade/orders`;
+};
+
+export const placeOrder = async (
+  orderInput: OrderInput,
+  options?: RequestInit,
+): Promise<OrderResult> => {
+  return customFetch<OrderResult>(getPlaceOrderUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(orderInput),
+  });
+};
+
+export const getPlaceOrderMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof placeOrder>>,
+    TError,
+    { data: BodyType<OrderInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof placeOrder>>,
+  TError,
+  { data: BodyType<OrderInput> },
+  TContext
+> => {
+  const mutationKey = ["placeOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof placeOrder>>,
+    { data: BodyType<OrderInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return placeOrder(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlaceOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof placeOrder>>
+>;
+export type PlaceOrderMutationBody = BodyType<OrderInput>;
+export type PlaceOrderMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Place a market order on a spot pair (with optional stop-loss)
+ */
+export const usePlaceOrder = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof placeOrder>>,
+    TError,
+    { data: BodyType<OrderInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof placeOrder>>,
+  TError,
+  { data: BodyType<OrderInput> },
+  TContext
+> => {
+  return useMutation(getPlaceOrderMutationOptions(options));
+};
+
+/**
+ * @summary Recent filled trades activity feed
+ */
+export const getListRecentFillsUrl = () => {
+  return `/api/okx/trade/orders/recent-fills`;
+};
+
+export const listRecentFills = async (
+  options?: RequestInit,
+): Promise<Fill[]> => {
+  return customFetch<Fill[]>(getListRecentFillsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListRecentFillsQueryKey = () => {
+  return [`/api/okx/trade/orders/recent-fills`] as const;
+};
+
+export const getListRecentFillsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listRecentFills>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listRecentFills>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListRecentFillsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listRecentFills>>> = ({
+    signal,
+  }) => listRecentFills({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listRecentFills>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListRecentFillsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listRecentFills>>
+>;
+export type ListRecentFillsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Recent filled trades activity feed
+ */
+
+export function useListRecentFills<
+  TData = Awaited<ReturnType<typeof listRecentFills>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listRecentFills>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListRecentFillsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
