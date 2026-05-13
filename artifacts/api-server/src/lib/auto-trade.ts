@@ -36,7 +36,18 @@ export type AutoTradeConfig = {
 
 const DEFAULT_CONFIG: Omit<AutoTradeConfig, "updatedAt" | "killUntil"> = {
   enabled: false,
-  whitelist: ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "HYPE-USDT-SWAP"],
+  whitelist: [
+    "BTC-USDT-SWAP",
+    "ETH-USDT-SWAP",
+    "SOL-USDT-SWAP",
+    "HYPE-USDT-SWAP",
+    "BNB-USDT-SWAP",
+    "XRP-USDT-SWAP",
+    "DOGE-USDT-SWAP",
+    "AVAX-USDT-SWAP",
+    "SUI-USDT-SWAP",
+    "LINK-USDT-SWAP",
+  ],
   maxMarginPctPerTrade: 5,
   maxDailyLossPct: 10,
   maxConcurrentPositions: 3,
