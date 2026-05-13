@@ -345,3 +345,306 @@ export const ListRecentFillsResponseItem = zod.object({
   ts: zod.string(),
 });
 export const ListRecentFillsResponse = zod.array(ListRecentFillsResponseItem);
+
+/**
+ * @summary Full 3-stage research pipeline (technical agent + sentiment agent + 4-model decision battle)
+ */
+export const RunResearchPipelineBody = zod.object({
+  instId: zod.string(),
+  mode: zod
+    .union([zod.literal("spot"), zod.literal("perp"), zod.literal(null)])
+    .nullish()
+    .describe("spot (default) or perp - changes the prompt for the AI"),
+  marginUsdt: zod
+    .number()
+    .nullish()
+    .describe("For perp mode, max USDT margin the AI may suggest committing"),
+  maxLeverage: zod
+    .number()
+    .nullish()
+    .describe("For perp mode, max leverage the AI may suggest"),
+});
+
+export const RunResearchPipelineResponse = zod.object({
+  instId: zod.string(),
+  mode: zod.enum(["spot", "perp"]),
+  generatedAt: zod.string(),
+  lastPrice: zod.number(),
+  technicalSummary: zod.string().nullish(),
+  sentimentSummary: zod.string().nullish(),
+  indicatorTextByBar: zod.string().nullish(),
+  contextText: zod.string().nullish(),
+  fundingRate: zod.number().nullish(),
+  openInterestCcy: zod.number().nullish(),
+  longShortRatio: zod.number().nullish(),
+  takerBuyRatio: zod.number().nullish(),
+  atr1H: zod.number().nullish(),
+  recommendations: zod.array(
+    zod.object({
+      providerId: zod
+        .string()
+        .describe("Stable id (anthropic | openai | gemini | openrouter)"),
+      providerLabel: zod
+        .string()
+        .describe('Human-readable label (e.g. \"Claude Sonnet 4.6\")'),
+      model: zod.string(),
+      latencyMs: zod.number(),
+      ok: zod.boolean(),
+      error: zod.string().nullish(),
+      action: zod
+        .union([
+          zod.literal("buy"),
+          zod.literal("sell"),
+          zod.literal("hold"),
+          zod.literal("long"),
+          zod.literal("short"),
+          zod.literal("close"),
+          zod.literal(null),
+        ])
+        .nullish(),
+      sizeUsdt: zod
+        .number()
+        .nullish()
+        .describe(
+          "Spot mode - suggested USDT notional. Perp mode - leave null.",
+        ),
+      marginUsdt: zod
+        .number()
+        .nullish()
+        .describe(
+          "Perp mode - suggested USDT margin (notional = margin \* leverage)",
+        ),
+      leverage: zod
+        .number()
+        .nullish()
+        .describe("Perp mode - suggested leverage (1 to maxLeverage)"),
+      stopLossPrice: zod.number().nullish(),
+      takeProfitPrice: zod
+        .number()
+        .nullish()
+        .describe("Perp mode - optional take-profit trigger price"),
+      confidence: zod
+        .number()
+        .nullish()
+        .describe("1-10 self-reported confidence"),
+      reasoning: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get auto-trade configuration (singleton)
+ */
+export const GetAutoTradeConfigResponse = zod.object({
+  enabled: zod.boolean(),
+  whitelist: zod.array(zod.string()),
+  maxMarginPctPerTrade: zod.number(),
+  maxDailyLossPct: zod.number(),
+  maxConcurrentPositions: zod.number(),
+  maxLeverage: zod.number(),
+  minConsensusCount: zod.number(),
+  minAvgConfidence: zod.number(),
+  cooldownMinutes: zod.number(),
+  killUntil: zod.string().nullish(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Update auto-trade configuration
+ */
+export const UpdateAutoTradeConfigBody = zod.object({
+  enabled: zod.boolean().nullish(),
+  whitelist: zod.array(zod.string()).nullish(),
+  maxMarginPctPerTrade: zod.number().nullish(),
+  maxDailyLossPct: zod.number().nullish(),
+  maxConcurrentPositions: zod.number().nullish(),
+  maxLeverage: zod.number().nullish(),
+  minConsensusCount: zod.number().nullish(),
+  minAvgConfidence: zod.number().nullish(),
+  cooldownMinutes: zod.number().nullish(),
+});
+
+export const UpdateAutoTradeConfigResponse = zod.object({
+  enabled: zod.boolean(),
+  whitelist: zod.array(zod.string()),
+  maxMarginPctPerTrade: zod.number(),
+  maxDailyLossPct: zod.number(),
+  maxConcurrentPositions: zod.number(),
+  maxLeverage: zod.number(),
+  minConsensusCount: zod.number(),
+  minAvgConfidence: zod.number(),
+  cooldownMinutes: zod.number(),
+  killUntil: zod.string().nullish(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Get current auto-trade engine status
+ */
+export const GetAutoTradeStatusResponse = zod.object({
+  enabled: zod.boolean(),
+  killed: zod.boolean(),
+  killUntil: zod.string().nullish(),
+  lastCycleAt: zod.string().nullable(),
+  nextCycleAt: zod.string().nullable(),
+  recentExecutionCount: zod.number(),
+  openPositionCount: zod.number(),
+  dailyRealizedPnlUsdt: zod.number(),
+  currentEquityUsdt: zod.number(),
+  message: zod.string().nullish(),
+});
+
+/**
+ * @summary Immediately disable auto-trade until manually re-enabled
+ */
+export const KillAutoTradeResponse = zod.object({
+  enabled: zod.boolean(),
+  killed: zod.boolean(),
+  killUntil: zod.string().nullish(),
+  lastCycleAt: zod.string().nullable(),
+  nextCycleAt: zod.string().nullable(),
+  recentExecutionCount: zod.number(),
+  openPositionCount: zod.number(),
+  dailyRealizedPnlUsdt: zod.number(),
+  currentEquityUsdt: zod.number(),
+  message: zod.string().nullish(),
+});
+
+/**
+ * @summary Force a single auto-trade cycle to run immediately (respects all guardrails)
+ */
+export const RunAutoTradeCycleNowResponse = zod.object({
+  ranAt: zod.string(),
+  perInstrument: zod.array(
+    zod.object({
+      instId: zod.string(),
+      action: zod.string(),
+      reason: zod.string().nullish(),
+      executionId: zod.number().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary Recent AI decisions (auto + user-triggered)
+ */
+export const listAutoTradeDecisionsQueryLimitDefault = 50;
+
+export const ListAutoTradeDecisionsQueryParams = zod.object({
+  limit: zod.coerce.number().default(listAutoTradeDecisionsQueryLimitDefault),
+});
+
+export const ListAutoTradeDecisionsResponseItem = zod.object({
+  id: zod.number(),
+  createdAt: zod.string(),
+  instId: zod.string(),
+  mode: zod.string(),
+  lastPrice: zod.number(),
+  technicalSummary: zod.string().nullish(),
+  sentimentSummary: zod.string().nullish(),
+  consensusAction: zod.string().nullish(),
+  consensusConfidence: zod.number().nullish(),
+  triggeredBy: zod.string(),
+  recommendations: zod.array(
+    zod.object({
+      providerId: zod
+        .string()
+        .describe("Stable id (anthropic | openai | gemini | openrouter)"),
+      providerLabel: zod
+        .string()
+        .describe('Human-readable label (e.g. \"Claude Sonnet 4.6\")'),
+      model: zod.string(),
+      latencyMs: zod.number(),
+      ok: zod.boolean(),
+      error: zod.string().nullish(),
+      action: zod
+        .union([
+          zod.literal("buy"),
+          zod.literal("sell"),
+          zod.literal("hold"),
+          zod.literal("long"),
+          zod.literal("short"),
+          zod.literal("close"),
+          zod.literal(null),
+        ])
+        .nullish(),
+      sizeUsdt: zod
+        .number()
+        .nullish()
+        .describe(
+          "Spot mode - suggested USDT notional. Perp mode - leave null.",
+        ),
+      marginUsdt: zod
+        .number()
+        .nullish()
+        .describe(
+          "Perp mode - suggested USDT margin (notional = margin \* leverage)",
+        ),
+      leverage: zod
+        .number()
+        .nullish()
+        .describe("Perp mode - suggested leverage (1 to maxLeverage)"),
+      stopLossPrice: zod.number().nullish(),
+      takeProfitPrice: zod
+        .number()
+        .nullish()
+        .describe("Perp mode - optional take-profit trigger price"),
+      confidence: zod
+        .number()
+        .nullish()
+        .describe("1-10 self-reported confidence"),
+      reasoning: zod.string().nullish(),
+    }),
+  ),
+});
+export const ListAutoTradeDecisionsResponse = zod.array(
+  ListAutoTradeDecisionsResponseItem,
+);
+
+/**
+ * @summary Recent auto-trade executions (placed + closed orders)
+ */
+export const listAutoTradeExecutionsQueryLimitDefault = 50;
+
+export const ListAutoTradeExecutionsQueryParams = zod.object({
+  limit: zod.coerce.number().default(listAutoTradeExecutionsQueryLimitDefault),
+});
+
+export const ListAutoTradeExecutionsResponseItem = zod.object({
+  id: zod.number(),
+  createdAt: zod.string(),
+  decisionId: zod.number().nullish(),
+  instId: zod.string(),
+  side: zod.string(),
+  marginUsdt: zod.number().nullish(),
+  leverage: zod.number().nullish(),
+  contracts: zod.number().nullish(),
+  entryPrice: zod.number().nullish(),
+  ordId: zod.string().nullish(),
+  status: zod.string(),
+  reason: zod.string().nullish(),
+  realizedPnlUsdt: zod.number().nullish(),
+  closePrice: zod.number().nullish(),
+  closedAt: zod.string().nullish(),
+  chosenProviderId: zod.string().nullish(),
+});
+export const ListAutoTradeExecutionsResponse = zod.array(
+  ListAutoTradeExecutionsResponseItem,
+);
+
+/**
+ * @summary Per-model win rate / hit rate from past decisions
+ */
+export const GetModelLeaderboardResponseItem = zod.object({
+  providerId: zod.string(),
+  providerLabel: zod.string(),
+  totalSuggestions: zod.number(),
+  executedCount: zod.number(),
+  winCount: zod.number(),
+  lossCount: zod.number(),
+  winRate: zod.number(),
+  totalRealizedPnlUsdt: zod.number(),
+});
+export const GetModelLeaderboardResponse = zod.array(
+  GetModelLeaderboardResponseItem,
+);

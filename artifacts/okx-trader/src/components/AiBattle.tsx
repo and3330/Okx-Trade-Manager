@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  useRecommendTrade,
+  useRunResearchPipeline,
   usePlaceOrder,
   usePlacePerpOrder,
   useClosePerpPosition,
@@ -29,10 +29,19 @@ type AiRecommendation = {
   confidence?: number | null;
   reasoning?: string | null;
 };
-type AiRecommendationsResponse = {
+type ResearchResponse = {
   instId: string;
+  mode: string;
   generatedAt: string;
   lastPrice: number;
+  technicalSummary?: string | null;
+  sentimentSummary?: string | null;
+  indicatorTextByBar?: string | null;
+  contextText?: string | null;
+  fundingRate?: number | null;
+  longShortRatio?: number | null;
+  takerBuyRatio?: number | null;
+  atr1H?: number | null;
   recommendations: AiRecommendation[];
 };
 import { useQueryClient } from "@tanstack/react-query";
@@ -69,11 +78,14 @@ function executeButtonClass(action: string | null | undefined) {
 
 export default function AiBattle({ instId, mode = "spot" }: { instId: string; mode?: Mode }) {
   const queryClient = useQueryClient();
-  const [data, setData] = useState<AiRecommendationsResponse | null>(null);
+  const [data, setData] = useState<ResearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ rec: Rec; instId: string } | null>(null);
+  const [showStage1, setShowStage1] = useState(true);
+  const [showStage2, setShowStage2] = useState(true);
+  const [showIndicators, setShowIndicators] = useState(false);
 
-  const recommend = useRecommendTrade();
+  const recommend = useRunResearchPipeline();
   const placeOrder = usePlaceOrder();
   const placePerp = usePlacePerpOrder();
   const closePerp = useClosePerpPosition();
@@ -83,7 +95,7 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
     recommend.mutate(
       { data: { instId, mode } as any },
       {
-        onSuccess: (res) => setData(res as AiRecommendationsResponse),
+        onSuccess: (res) => setData(res as unknown as ResearchResponse),
         onError: (err: unknown) => {
           const e = err as { data?: { error?: string }; message?: string };
           setError(e?.data?.error || e?.message || "AI battle failed");
@@ -219,16 +231,62 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
         </Button>
       </div>
 
-      <div className="p-3 max-h-[420px] overflow-y-auto space-y-2">
+      <div className="p-3 max-h-[520px] overflow-y-auto space-y-2">
         {error && <div className="text-xs text-destructive font-mono whitespace-pre-wrap">{error}</div>}
         {!error && !data && !recommend.isPending && (
           <p className="text-xs text-muted-foreground leading-relaxed px-1 py-2">
             {mode === "perp"
-              ? `按下按鈕讓 4 個 AI 同時針對 ${instId} 永續合約給出建議(做多/做空/平倉/觀望、保證金、槓桿、TP/SL)。確認後才會送單。`
-              : `Click the button to ask 4 AI models in parallel — Claude, GPT, Gemini, and DeepSeek — for a concrete trade idea on ${instId}. You stay in control: nothing trades unless you click Execute on the one you like.`}
+              ? `按下按鈕跑完整 3 階段 AI 研究(技術分析→資金/情緒分析→4 模型決策)針對 ${instId} 永續合約。確認後才送單。`
+              : `Run the full 3-stage research pipeline (technical analyst → sentiment analyst → 4-model decision battle) for ${instId}. You stay in control: nothing trades unless you click Execute.`}
           </p>
         )}
-        {recommend.isPending && <div className="text-xs text-muted-foreground font-mono px-1 py-2">Polling 4 models in parallel...</div>}
+        {recommend.isPending && <div className="text-xs text-muted-foreground font-mono px-1 py-2">Stage 1 + 2 in parallel, then 4-model battle...</div>}
+
+        {data && !stale && (data.technicalSummary || data.sentimentSummary || data.indicatorTextByBar) && (
+          <div className="space-y-2 mb-2">
+            {data.technicalSummary && (
+              <div className="border border-border rounded-md bg-background/40">
+                <button
+                  type="button"
+                  onClick={() => setShowStage1(!showStage1)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#00e59b] hover:bg-muted/30"
+                >
+                  <span>① 技術分析師 · Claude</span>
+                  <span className="opacity-60">{showStage1 ? "▾" : "▸"}</span>
+                </button>
+                {showStage1 && <p className="px-3 pb-2 text-[11px] text-muted-foreground leading-snug whitespace-pre-wrap">{data.technicalSummary}</p>}
+              </div>
+            )}
+            {data.sentimentSummary && data.sentimentSummary !== "(現貨模式不分析資金面)" && (
+              <div className="border border-border rounded-md bg-background/40">
+                <button
+                  type="button"
+                  onClick={() => setShowStage2(!showStage2)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-400 hover:bg-muted/30"
+                >
+                  <span>② 資金/情緒分析師 · Gemini</span>
+                  <span className="opacity-60">{showStage2 ? "▾" : "▸"}</span>
+                </button>
+                {showStage2 && <p className="px-3 pb-2 text-[11px] text-muted-foreground leading-snug whitespace-pre-wrap">{data.sentimentSummary}</p>}
+              </div>
+            )}
+            {data.indicatorTextByBar && (
+              <div className="border border-border rounded-md bg-background/40">
+                <button
+                  type="button"
+                  onClick={() => setShowIndicators(!showIndicators)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:bg-muted/30"
+                >
+                  <span>多時框指標原始值 (15m/1H/4H/1D)</span>
+                  <span className="opacity-60">{showIndicators ? "▾" : "▸"}</span>
+                </button>
+                {showIndicators && <pre className="px-3 pb-2 text-[10px] text-muted-foreground font-mono whitespace-pre-wrap">{data.indicatorTextByBar}</pre>}
+              </div>
+            )}
+            <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground px-1 pt-1">③ 4 模型決策</div>
+          </div>
+        )}
+
         {stale && (
           <div className="text-xs text-amber-400 px-1">
             Showing results for {data?.instId}. Click Re-run to update for {instId}.

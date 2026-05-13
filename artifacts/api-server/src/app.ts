@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { startScheduler } from "./lib/auto-trade";
 
 const app: Express = express();
 
@@ -31,5 +32,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+// Start auto-trade scheduler (only triggers at HH:01 if config.enabled)
+try {
+  startScheduler();
+} catch (err) {
+  logger.error({ err }, "failed to start auto-trade scheduler");
+}
 
 export default app;

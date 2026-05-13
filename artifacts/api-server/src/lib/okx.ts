@@ -848,3 +848,380 @@ export async function fetchAccountSummary(): Promise<{
     updatedAt: bal.updatedAt,
   };
 }
+
+// ---------- Public market context (no auth) ----------
+
+const PUBLIC_BASE_URL = OKX_BASE_URL;
+
+async function publicGet<T = unknown>(
+  path: string,
+  query?: Record<string, string>,
+): Promise<T> {
+  let url = `${PUBLIC_BASE_URL}${path}`;
+  if (query && Object.keys(query).length > 0) {
+    url += `?${new URLSearchParams(query).toString()}`;
+  }
+  const res = await fetch(url);
+  const json = (await res.json().catch(() => ({}))) as OkxResponse<T>;
+  if (!res.ok || (json.code && json.code !== "0")) {
+    throw new OkxError(
+      String(json.code ?? res.status),
+      json.msg || `OKX HTTP ${res.status}`,
+      res.status >= 500 ? 502 : 400,
+    );
+  }
+  return json.data;
+}
+
+async function publicPost<T = unknown>(
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const res = await fetch(`${PUBLIC_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const json = (await res.json().catch(() => ({}))) as OkxResponse<T>;
+  if (!res.ok || (json.code && json.code !== "0")) {
+    throw new OkxError(
+      String(json.code ?? res.status),
+      json.msg || `OKX HTTP ${res.status}`,
+      res.status >= 500 ? 502 : 400,
+    );
+  }
+  return json.data;
+}
+
+// --- Technical indicators (OKX AIGC endpoint) ---
+
+export type IndicatorBar =
+  | "3m" | "5m" | "15m" | "1H" | "4H" | "12Hutc" | "1Dutc" | "3Dutc" | "1Wutc";
+
+export type IndicatorRequestSpec = {
+  code: string; // e.g. "RSI", "MACD", "BB", "ATR"
+  paramList?: number[];
+};
+
+type IndicatorPoint = { ts: string; values: Record<string, string | number> };
+type IndicatorBucket = Record<string, IndicatorPoint[]>;
+type IndicatorTimeframeBlock = { indicators: IndicatorBucket };
+type IndicatorRow = {
+  instId: string;
+  timeframes: Record<string, IndicatorTimeframeBlock>;
+};
+type IndicatorResponseRow = { data: IndicatorRow[] };
+
+export type IndicatorResultByCode = Record<
+  string,
+  { ts: string; values: Record<string, number> }
+>;
+
+export async function fetchIndicators(
+  instId: string,
+  bar: IndicatorBar,
+  specs: IndicatorRequestSpec[],
+): Promise<IndicatorResultByCode> {
+  const indicators: Record<string, { paramList?: number[] }> = {};
+  for (const s of specs) indicators[s.code] = s.paramList ? { paramList: s.paramList } : {};
+  const body = { instId, timeframes: [bar], indicators };
+  const data = await publicPost<IndicatorResponseRow[]>(
+    "/api/v5/aigc/mcp/indicators",
+    body,
+  );
+  const block = data[0]?.data?.[0]?.timeframes?.[bar]?.indicators;
+  const out: IndicatorResultByCode = {};
+  if (!block) return out;
+  for (const code of Object.keys(block)) {
+    const point = block[code]?.[0];
+    if (!point) continue;
+    const numeric: Record<string, number> = {};
+    for (const k of Object.keys(point.values)) {
+      const v = point.values[k];
+      const n = typeof v === "string" ? parseFloat(v) : v;
+      if (Number.isFinite(n)) numeric[k] = n as number;
+    }
+    out[code] = { ts: point.ts, values: numeric };
+  }
+  return out;
+}
+
+export type MultiTimeframeIndicators = Record<
+  string, // bar
+  IndicatorResultByCode
+>;
+
+const STANDARD_INDICATORS: IndicatorRequestSpec[] = [
+  { code: "RSI", paramList: [14] },
+  { code: "MACD", paramList: [12, 26, 9] },
+  { code: "BB", paramList: [20, 2] },
+  { code: "ATR", paramList: [14] },
+  { code: "ADX", paramList: [14] },
+  { code: "EMA", paramList: [20] },
+  { code: "SUPERTREND", paramList: [10, 3] },
+  { code: "STOCHRSI", paramList: [14, 14, 3, 3] },
+  { code: "OBV" },
+];
+
+const STANDARD_BARS: IndicatorBar[] = ["15m", "1H", "4H", "1Dutc"];
+
+// OKX indicator endpoint rejects more than ~6 indicators in one request, so split into batches.
+const INDICATOR_BATCHES: IndicatorRequestSpec[][] = [
+  [
+    { code: "RSI", paramList: [14] },
+    { code: "MACD", paramList: [12, 26, 9] },
+    { code: "BB", paramList: [20, 2] },
+    { code: "ATR", paramList: [14] },
+    { code: "ADX", paramList: [14] },
+  ],
+  [
+    { code: "EMA", paramList: [20] },
+    { code: "SUPERTREND", paramList: [10, 3] },
+    { code: "STOCHRSI", paramList: [14, 14, 3, 3] },
+    { code: "OBV" },
+  ],
+];
+void STANDARD_INDICATORS;
+
+export async function fetchStandardMultiTimeframeIndicators(
+  instId: string,
+): Promise<MultiTimeframeIndicators> {
+  const entries = await Promise.all(
+    STANDARD_BARS.map(async (bar) => {
+      const batchResults = await Promise.all(
+        INDICATOR_BATCHES.map(async (batch) => {
+          try {
+            return await fetchIndicators(instId, bar, batch);
+          } catch (err) {
+            logger.warn({ err, instId, bar, batchSize: batch.length }, "indicators fetch failed");
+            return {} as IndicatorResultByCode;
+          }
+        }),
+      );
+      const merged: IndicatorResultByCode = {};
+      for (const r of batchResults) Object.assign(merged, r);
+      return [bar, merged] as const;
+    }),
+  );
+  const out: MultiTimeframeIndicators = {};
+  for (const [bar, r] of entries) out[bar] = r;
+  return out;
+}
+
+export function summarizeIndicators(byBar: MultiTimeframeIndicators): string {
+  const lines: string[] = [];
+  for (const bar of STANDARD_BARS) {
+    const r = byBar[bar];
+    if (!r || Object.keys(r).length === 0) continue;
+    const parts: string[] = [];
+    const rsi = r["RSI"]?.values["14"];
+    if (rsi != null) {
+      const tag = rsi >= 70 ? " [超買]" : rsi <= 30 ? " [超賣]" : "";
+      parts.push(`RSI ${rsi.toFixed(1)}${tag}`);
+    }
+    const macd = r["MACD"]?.values;
+    if (macd) {
+      const dif = macd["dif"];
+      const dea = macd["dea"];
+      const hist = macd["macd"];
+      if (dif != null && dea != null && hist != null) {
+        const cross = dif > dea ? "多頭" : "空頭";
+        parts.push(`MACD ${cross}(dif ${dif.toFixed(2)} dea ${dea.toFixed(2)} hist ${hist.toFixed(2)})`);
+      }
+    }
+    const bb = r["BB"]?.values;
+    if (bb && bb["upper"] != null && bb["lower"] != null && bb["middle"] != null) {
+      parts.push(`BB ${bb["lower"].toFixed(2)}~${bb["middle"].toFixed(2)}~${bb["upper"].toFixed(2)}`);
+    }
+    const atr = r["ATR"]?.values["14"];
+    if (atr != null) parts.push(`ATR ${atr.toFixed(2)}`);
+    const adx = r["ADX"]?.values["14"] ?? r["ADX"]?.values["adx"];
+    if (adx != null) {
+      const tag = adx >= 25 ? " [強趨勢]" : adx < 20 ? " [盤整]" : "";
+      parts.push(`ADX ${adx.toFixed(1)}${tag}`);
+    }
+    const ema = r["EMA"]?.values["20"];
+    if (ema != null) parts.push(`EMA20 ${ema.toFixed(2)}`);
+    const st = r["SUPERTREND"]?.values;
+    if (st) {
+      const dir = st["direction"] ?? st["trend"] ?? null;
+      const val = st["supertrend"] ?? st["value"] ?? null;
+      if (dir != null) parts.push(`SUPERTREND ${dir > 0 ? "多" : "空"}${val != null ? ` @${val.toFixed(2)}` : ""}`);
+    }
+    const stoch = r["STOCHRSI"]?.values;
+    if (stoch && stoch["k"] != null && stoch["d"] != null) {
+      parts.push(`StochRSI K${stoch["k"].toFixed(1)}/D${stoch["d"].toFixed(1)}`);
+    }
+    const obv = r["OBV"]?.values["obv"] ?? r["OBV"]?.values["value"];
+    if (obv != null) parts.push(`OBV ${obv.toExponential(2)}`);
+    lines.push(`[${bar}] ${parts.join("  ")}`);
+  }
+  return lines.join("\n");
+}
+
+// Pull a single ATR(14) value at a given bar — used for SL distance defaults.
+export async function fetchAtr(
+  instId: string,
+  bar: IndicatorBar = "1H",
+): Promise<number | null> {
+  try {
+    const r = await fetchIndicators(instId, bar, [{ code: "ATR", paramList: [14] }]);
+    const v = r["ATR"]?.values["14"];
+    return v != null && Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+// --- Funding / OI / sentiment ---
+
+type FundingRow = {
+  instId: string;
+  fundingRate: string;
+  nextFundingRate?: string;
+  fundingTime: string;
+  nextFundingTime?: string;
+};
+
+export type FundingRateData = {
+  instId: string;
+  fundingRate: number;
+  nextFundingRate: number | null;
+  fundingTime: string;
+  nextFundingTime: string | null;
+};
+
+export async function fetchFundingRate(instId: string): Promise<FundingRateData | null> {
+  try {
+    const rows = await publicGet<FundingRow[]>("/api/v5/public/funding-rate", { instId });
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      instId: r.instId,
+      fundingRate: num(r.fundingRate),
+      nextFundingRate: r.nextFundingRate ? num(r.nextFundingRate) : null,
+      fundingTime: r.fundingTime ? new Date(parseInt(r.fundingTime, 10)).toISOString() : "",
+      nextFundingTime: r.nextFundingTime ? new Date(parseInt(r.nextFundingTime, 10)).toISOString() : null,
+    };
+  } catch (err) {
+    logger.warn({ err, instId }, "funding-rate fetch failed");
+    return null;
+  }
+}
+
+type OpenInterestRow = { instId: string; oi: string; oiCcy: string; ts: string };
+export type OpenInterestData = {
+  instId: string;
+  oi: number;
+  oiCcy: number;
+  ts: string;
+};
+
+export async function fetchOpenInterest(instId: string): Promise<OpenInterestData | null> {
+  try {
+    const rows = await publicGet<OpenInterestRow[]>(
+      "/api/v5/public/open-interest",
+      { instType: "SWAP", instId },
+    );
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      instId: r.instId,
+      oi: num(r.oi),
+      oiCcy: num(r.oiCcy),
+      ts: new Date(parseInt(r.ts, 10)).toISOString(),
+    };
+  } catch (err) {
+    logger.warn({ err, instId }, "open-interest fetch failed");
+    return null;
+  }
+}
+
+type LongShortRow = [string, string]; // [ts, ratio]
+export type LongShortRatioData = { ratio: number; ts: string };
+
+export async function fetchLongShortRatio(ccy: string): Promise<LongShortRatioData | null> {
+  try {
+    const rows = await publicGet<LongShortRow[]>(
+      "/api/v5/rubik/stat/contracts/long-short-account-ratio",
+      { ccy, period: "1H" },
+    );
+    const r = rows[0];
+    if (!r) return null;
+    return { ts: new Date(parseInt(r[0], 10)).toISOString(), ratio: num(r[1]) };
+  } catch (err) {
+    logger.warn({ err, ccy }, "long-short-ratio fetch failed");
+    return null;
+  }
+}
+
+type TakerVolumeRow = [string, string, string]; // [ts, sellVol, buyVol]
+export type TakerVolumeData = { ts: string; buyVol: number; sellVol: number; buyRatio: number };
+
+export async function fetchTakerVolume(ccy: string): Promise<TakerVolumeData | null> {
+  try {
+    const rows = await publicGet<TakerVolumeRow[]>(
+      "/api/v5/rubik/stat/taker-volume",
+      { ccy, instType: "SWAP", period: "1H" },
+    );
+    const r = rows[0];
+    if (!r) return null;
+    const sell = num(r[1]);
+    const buy = num(r[2]);
+    const total = buy + sell;
+    return {
+      ts: new Date(parseInt(r[0], 10)).toISOString(),
+      buyVol: buy,
+      sellVol: sell,
+      buyRatio: total > 0 ? buy / total : 0.5,
+    };
+  } catch (err) {
+    logger.warn({ err, ccy }, "taker-volume fetch failed");
+    return null;
+  }
+}
+
+export type MarketContextBundle = {
+  fundingRate: FundingRateData | null;
+  openInterest: OpenInterestData | null;
+  longShortRatio: LongShortRatioData | null;
+  takerVolume: TakerVolumeData | null;
+};
+
+export async function fetchMarketContextBundle(instId: string): Promise<MarketContextBundle> {
+  const ccy = instId.split("-")[0] ?? "BTC";
+  const [fundingRate, openInterest, longShortRatio, takerVolume] = await Promise.all([
+    fetchFundingRate(instId),
+    fetchOpenInterest(instId),
+    fetchLongShortRatio(ccy),
+    fetchTakerVolume(ccy),
+  ]);
+  return { fundingRate, openInterest, longShortRatio, takerVolume };
+}
+
+export function summarizeMarketContext(bundle: MarketContextBundle): string {
+  const lines: string[] = [];
+  if (bundle.fundingRate) {
+    const ann = bundle.fundingRate.fundingRate * 3 * 365 * 100;
+    lines.push(
+      `資金費率: ${(bundle.fundingRate.fundingRate * 100).toFixed(4)}% / 8h (年化約 ${ann.toFixed(1)}%)` +
+        (bundle.fundingRate.nextFundingRate != null
+          ? `,下期預測 ${(bundle.fundingRate.nextFundingRate * 100).toFixed(4)}%`
+          : ""),
+    );
+  }
+  if (bundle.openInterest) {
+    lines.push(`未平倉 OI: ${bundle.openInterest.oiCcy.toFixed(0)} 幣 / ${bundle.openInterest.oi.toFixed(0)} 張`);
+  }
+  if (bundle.longShortRatio) {
+    const r = bundle.longShortRatio.ratio;
+    const tag = r > 1.5 ? " [散戶極度看多→反向警示]" : r < 0.7 ? " [散戶極度看空→反向警示]" : "";
+    lines.push(`散戶多空比: ${r.toFixed(2)}${tag}`);
+  }
+  if (bundle.takerVolume) {
+    const pct = bundle.takerVolume.buyRatio * 100;
+    const tag = pct > 60 ? " [主動買壓強]" : pct < 40 ? " [主動賣壓強]" : "";
+    lines.push(`主動買賣比: 買 ${pct.toFixed(1)}%${tag}`);
+  }
+  return lines.length > 0 ? lines.join("\n") : "(無情緒資料)";
+}

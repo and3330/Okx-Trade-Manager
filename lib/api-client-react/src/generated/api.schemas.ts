@@ -378,3 +378,171 @@ export interface AiRecommendationsResponse {
   lastPrice: number;
   recommendations: AiRecommendation[];
 }
+
+export type ResearchResultMode =
+  (typeof ResearchResultMode)[keyof typeof ResearchResultMode];
+
+export const ResearchResultMode = {
+  spot: "spot",
+  perp: "perp",
+} as const;
+
+export interface ResearchResult {
+  instId: string;
+  mode: ResearchResultMode;
+  generatedAt: string;
+  lastPrice: number;
+  /** @nullable */
+  technicalSummary?: string | null;
+  /** @nullable */
+  sentimentSummary?: string | null;
+  /** @nullable */
+  indicatorTextByBar?: string | null;
+  /** @nullable */
+  contextText?: string | null;
+  /** @nullable */
+  fundingRate?: number | null;
+  /** @nullable */
+  openInterestCcy?: number | null;
+  /** @nullable */
+  longShortRatio?: number | null;
+  /** @nullable */
+  takerBuyRatio?: number | null;
+  /** @nullable */
+  atr1H?: number | null;
+  recommendations: AiRecommendation[];
+}
+
+export interface AutoTradeConfig {
+  enabled: boolean;
+  whitelist: string[];
+  maxMarginPctPerTrade: number;
+  maxDailyLossPct: number;
+  maxConcurrentPositions: number;
+  maxLeverage: number;
+  minConsensusCount: number;
+  minAvgConfidence: number;
+  cooldownMinutes: number;
+  /** @nullable */
+  killUntil?: string | null;
+  updatedAt: string;
+}
+
+export interface AutoTradeConfigInput {
+  /** @nullable */
+  enabled?: boolean | null;
+  /** @nullable */
+  whitelist?: string[] | null;
+  /** @nullable */
+  maxMarginPctPerTrade?: number | null;
+  /** @nullable */
+  maxDailyLossPct?: number | null;
+  /** @nullable */
+  maxConcurrentPositions?: number | null;
+  /** @nullable */
+  maxLeverage?: number | null;
+  /** @nullable */
+  minConsensusCount?: number | null;
+  /** @nullable */
+  minAvgConfidence?: number | null;
+  /** @nullable */
+  cooldownMinutes?: number | null;
+}
+
+export interface AutoTradeStatus {
+  enabled: boolean;
+  killed: boolean;
+  /** @nullable */
+  killUntil?: string | null;
+  /** @nullable */
+  lastCycleAt: string | null;
+  /** @nullable */
+  nextCycleAt: string | null;
+  recentExecutionCount: number;
+  openPositionCount: number;
+  dailyRealizedPnlUsdt: number;
+  currentEquityUsdt: number;
+  /** @nullable */
+  message?: string | null;
+}
+
+export type AutoTradeRunResultPerInstrumentItem = {
+  instId: string;
+  action: string;
+  /** @nullable */
+  reason?: string | null;
+  /** @nullable */
+  executionId?: number | null;
+};
+
+export interface AutoTradeRunResult {
+  ranAt: string;
+  perInstrument: AutoTradeRunResultPerInstrumentItem[];
+}
+
+export interface AiDecisionRecord {
+  id: number;
+  createdAt: string;
+  instId: string;
+  mode: string;
+  lastPrice: number;
+  /** @nullable */
+  technicalSummary?: string | null;
+  /** @nullable */
+  sentimentSummary?: string | null;
+  /** @nullable */
+  consensusAction?: string | null;
+  /** @nullable */
+  consensusConfidence?: number | null;
+  triggeredBy: string;
+  recommendations: AiRecommendation[];
+}
+
+export interface AutoExecutionRecord {
+  id: number;
+  createdAt: string;
+  /** @nullable */
+  decisionId?: number | null;
+  instId: string;
+  side: string;
+  /** @nullable */
+  marginUsdt?: number | null;
+  /** @nullable */
+  leverage?: number | null;
+  /** @nullable */
+  contracts?: number | null;
+  /** @nullable */
+  entryPrice?: number | null;
+  /** @nullable */
+  ordId?: string | null;
+  status: string;
+  /** @nullable */
+  reason?: string | null;
+  /** @nullable */
+  realizedPnlUsdt?: number | null;
+  /** @nullable */
+  closePrice?: number | null;
+  /** @nullable */
+  closedAt?: string | null;
+  /** @nullable */
+  chosenProviderId?: string | null;
+}
+
+export interface LeaderboardEntry {
+  providerId: string;
+  providerLabel: string;
+  totalSuggestions: number;
+  executedCount: number;
+  winCount: number;
+  lossCount: number;
+  winRate: number;
+  totalRealizedPnlUsdt: number;
+}
+
+export type ListAutoTradeDecisionsParams = {
+  limit?: number;
+};
+
+export type ListAutoTradeExecutionsParams = {
+  limit?: number;
+};

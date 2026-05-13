@@ -20,6 +20,8 @@ tags:
     description: OKX USDT-margined perpetual (SWAP) trading
   - name: ai
     description: AI-powered analysis
+  - name: auto
+    description: Auto-trade engine
 paths:
   /healthz:
     get:
@@ -305,6 +307,151 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Fill"
+
+  /okx/ai/research:
+    post:
+      operationId: runResearchPipeline
+      tags: [ai]
+      summary: Full 3-stage research pipeline (technical agent + sentiment agent + 4-model decision battle)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiAnalysisInput"
+      responses:
+        "200":
+          description: Pipeline result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchResult"
+
+  /okx/auto/config:
+    get:
+      operationId: getAutoTradeConfig
+      tags: [auto]
+      summary: Get auto-trade configuration (singleton)
+      responses:
+        "200":
+          description: Current config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTradeConfig"
+    put:
+      operationId: updateAutoTradeConfig
+      tags: [auto]
+      summary: Update auto-trade configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutoTradeConfigInput"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTradeConfig"
+
+  /okx/auto/status:
+    get:
+      operationId: getAutoTradeStatus
+      tags: [auto]
+      summary: Get current auto-trade engine status
+      responses:
+        "200":
+          description: Engine status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTradeStatus"
+
+  /okx/auto/kill:
+    post:
+      operationId: killAutoTrade
+      tags: [auto]
+      summary: Immediately disable auto-trade until manually re-enabled
+      responses:
+        "200":
+          description: Killed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTradeStatus"
+
+  /okx/auto/run-now:
+    post:
+      operationId: runAutoTradeCycleNow
+      tags: [auto]
+      summary: Force a single auto-trade cycle to run immediately (respects all guardrails)
+      responses:
+        "200":
+          description: Run summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTradeRunResult"
+
+  /okx/auto/decisions:
+    get:
+      operationId: listAutoTradeDecisions
+      tags: [auto]
+      summary: Recent AI decisions (auto + user-triggered)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Decisions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiDecisionRecord"
+
+  /okx/auto/executions:
+    get:
+      operationId: listAutoTradeExecutions
+      tags: [auto]
+      summary: Recent auto-trade executions (placed + closed orders)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Executions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AutoExecutionRecord"
+
+  /okx/auto/leaderboard:
+    get:
+      operationId: getModelLeaderboard
+      tags: [auto]
+      summary: Per-model win rate / hit rate from past decisions
+      responses:
+        "200":
+          description: Leaderboard entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeaderboardEntry"
 
 components:
   schemas:
@@ -713,3 +860,225 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AiRecommendation"
+
+    ResearchResult:
+      type: object
+      required: [instId, mode, generatedAt, lastPrice, recommendations]
+      properties:
+        instId:
+          type: string
+        mode:
+          type: string
+          enum: [spot, perp]
+        generatedAt:
+          type: string
+        lastPrice:
+          type: number
+        technicalSummary:
+          type: ["string", "null"]
+        sentimentSummary:
+          type: ["string", "null"]
+        indicatorTextByBar:
+          type: ["string", "null"]
+        contextText:
+          type: ["string", "null"]
+        fundingRate:
+          type: ["number", "null"]
+        openInterestCcy:
+          type: ["number", "null"]
+        longShortRatio:
+          type: ["number", "null"]
+        takerBuyRatio:
+          type: ["number", "null"]
+        atr1H:
+          type: ["number", "null"]
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiRecommendation"
+
+    AutoTradeConfig:
+      type: object
+      required: [enabled, whitelist, maxMarginPctPerTrade, maxDailyLossPct, maxConcurrentPositions, maxLeverage, minConsensusCount, minAvgConfidence, cooldownMinutes, updatedAt]
+      properties:
+        enabled:
+          type: boolean
+        whitelist:
+          type: array
+          items:
+            type: string
+        maxMarginPctPerTrade:
+          type: number
+        maxDailyLossPct:
+          type: number
+        maxConcurrentPositions:
+          type: integer
+        maxLeverage:
+          type: integer
+        minConsensusCount:
+          type: integer
+        minAvgConfidence:
+          type: integer
+        cooldownMinutes:
+          type: integer
+        killUntil:
+          type: ["string", "null"]
+        updatedAt:
+          type: string
+
+    AutoTradeConfigInput:
+      type: object
+      properties:
+        enabled:
+          type: ["boolean", "null"]
+        whitelist:
+          type: ["array", "null"]
+          items:
+            type: string
+        maxMarginPctPerTrade:
+          type: ["number", "null"]
+        maxDailyLossPct:
+          type: ["number", "null"]
+        maxConcurrentPositions:
+          type: ["integer", "null"]
+        maxLeverage:
+          type: ["integer", "null"]
+        minConsensusCount:
+          type: ["integer", "null"]
+        minAvgConfidence:
+          type: ["integer", "null"]
+        cooldownMinutes:
+          type: ["integer", "null"]
+
+    AutoTradeStatus:
+      type: object
+      required: [enabled, killed, lastCycleAt, nextCycleAt, recentExecutionCount, openPositionCount, dailyRealizedPnlUsdt, currentEquityUsdt]
+      properties:
+        enabled:
+          type: boolean
+        killed:
+          type: boolean
+        killUntil:
+          type: ["string", "null"]
+        lastCycleAt:
+          type: ["string", "null"]
+        nextCycleAt:
+          type: ["string", "null"]
+        recentExecutionCount:
+          type: integer
+        openPositionCount:
+          type: integer
+        dailyRealizedPnlUsdt:
+          type: number
+        currentEquityUsdt:
+          type: number
+        message:
+          type: ["string", "null"]
+
+    AutoTradeRunResult:
+      type: object
+      required: [ranAt, perInstrument]
+      properties:
+        ranAt:
+          type: string
+        perInstrument:
+          type: array
+          items:
+            type: object
+            required: [instId, action]
+            properties:
+              instId:
+                type: string
+              action:
+                type: string
+              reason:
+                type: ["string", "null"]
+              executionId:
+                type: ["integer", "null"]
+
+    AiDecisionRecord:
+      type: object
+      required: [id, createdAt, instId, mode, lastPrice, recommendations, triggeredBy]
+      properties:
+        id:
+          type: integer
+        createdAt:
+          type: string
+        instId:
+          type: string
+        mode:
+          type: string
+        lastPrice:
+          type: number
+        technicalSummary:
+          type: ["string", "null"]
+        sentimentSummary:
+          type: ["string", "null"]
+        consensusAction:
+          type: ["string", "null"]
+        consensusConfidence:
+          type: ["integer", "null"]
+        triggeredBy:
+          type: string
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiRecommendation"
+
+    AutoExecutionRecord:
+      type: object
+      required: [id, createdAt, instId, side, status]
+      properties:
+        id:
+          type: integer
+        createdAt:
+          type: string
+        decisionId:
+          type: ["integer", "null"]
+        instId:
+          type: string
+        side:
+          type: string
+        marginUsdt:
+          type: ["number", "null"]
+        leverage:
+          type: ["integer", "null"]
+        contracts:
+          type: ["number", "null"]
+        entryPrice:
+          type: ["number", "null"]
+        ordId:
+          type: ["string", "null"]
+        status:
+          type: string
+        reason:
+          type: ["string", "null"]
+        realizedPnlUsdt:
+          type: ["number", "null"]
+        closePrice:
+          type: ["number", "null"]
+        closedAt:
+          type: ["string", "null"]
+        chosenProviderId:
+          type: ["string", "null"]
+
+    LeaderboardEntry:
+      type: object
+      required: [providerId, providerLabel, totalSuggestions, executedCount, winCount, lossCount, winRate, totalRealizedPnlUsdt]
+      properties:
+        providerId:
+          type: string
+        providerLabel:
+          type: string
+        totalSuggestions:
+          type: integer
+        executedCount:
+          type: integer
+        winCount:
+          type: integer
+        lossCount:
+          type: integer
+        winRate:
+          type: number
+        totalRealizedPnlUsdt:
+          type: number

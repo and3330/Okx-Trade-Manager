@@ -21,13 +21,22 @@ import type {
   AccountSummary,
   AiAnalysis,
   AiAnalysisInput,
+  AiDecisionRecord,
   AiRecommendationsResponse,
+  AutoExecutionRecord,
+  AutoTradeConfig,
+  AutoTradeConfigInput,
+  AutoTradeRunResult,
+  AutoTradeStatus,
   Candle,
   ClosePerpInput,
   ClosePerpResult,
   ErrorResponse,
   Fill,
   HealthStatus,
+  LeaderboardEntry,
+  ListAutoTradeDecisionsParams,
+  ListAutoTradeExecutionsParams,
   Order,
   OrderInput,
   OrderResult,
@@ -36,6 +45,7 @@ import type {
   PerpOrderResult,
   PerpPosition,
   PerpTicker,
+  ResearchResult,
   Ticker,
 } from "./api.schemas";
 
@@ -1329,6 +1339,768 @@ export function useListRecentFills<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListRecentFillsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Full 3-stage research pipeline (technical agent + sentiment agent + 4-model decision battle)
+ */
+export const getRunResearchPipelineUrl = () => {
+  return `/api/okx/ai/research`;
+};
+
+export const runResearchPipeline = async (
+  aiAnalysisInput: AiAnalysisInput,
+  options?: RequestInit,
+): Promise<ResearchResult> => {
+  return customFetch<ResearchResult>(getRunResearchPipelineUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiAnalysisInput),
+  });
+};
+
+export const getRunResearchPipelineMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runResearchPipeline>>,
+    TError,
+    { data: BodyType<AiAnalysisInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runResearchPipeline>>,
+  TError,
+  { data: BodyType<AiAnalysisInput> },
+  TContext
+> => {
+  const mutationKey = ["runResearchPipeline"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runResearchPipeline>>,
+    { data: BodyType<AiAnalysisInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return runResearchPipeline(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunResearchPipelineMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runResearchPipeline>>
+>;
+export type RunResearchPipelineMutationBody = BodyType<AiAnalysisInput>;
+export type RunResearchPipelineMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Full 3-stage research pipeline (technical agent + sentiment agent + 4-model decision battle)
+ */
+export const useRunResearchPipeline = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runResearchPipeline>>,
+    TError,
+    { data: BodyType<AiAnalysisInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runResearchPipeline>>,
+  TError,
+  { data: BodyType<AiAnalysisInput> },
+  TContext
+> => {
+  return useMutation(getRunResearchPipelineMutationOptions(options));
+};
+
+/**
+ * @summary Get auto-trade configuration (singleton)
+ */
+export const getGetAutoTradeConfigUrl = () => {
+  return `/api/okx/auto/config`;
+};
+
+export const getAutoTradeConfig = async (
+  options?: RequestInit,
+): Promise<AutoTradeConfig> => {
+  return customFetch<AutoTradeConfig>(getGetAutoTradeConfigUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAutoTradeConfigQueryKey = () => {
+  return [`/api/okx/auto/config`] as const;
+};
+
+export const getGetAutoTradeConfigQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAutoTradeConfig>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAutoTradeConfig>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAutoTradeConfigQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAutoTradeConfig>>
+  > = ({ signal }) => getAutoTradeConfig({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAutoTradeConfig>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAutoTradeConfigQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAutoTradeConfig>>
+>;
+export type GetAutoTradeConfigQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get auto-trade configuration (singleton)
+ */
+
+export function useGetAutoTradeConfig<
+  TData = Awaited<ReturnType<typeof getAutoTradeConfig>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAutoTradeConfig>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAutoTradeConfigQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update auto-trade configuration
+ */
+export const getUpdateAutoTradeConfigUrl = () => {
+  return `/api/okx/auto/config`;
+};
+
+export const updateAutoTradeConfig = async (
+  autoTradeConfigInput: AutoTradeConfigInput,
+  options?: RequestInit,
+): Promise<AutoTradeConfig> => {
+  return customFetch<AutoTradeConfig>(getUpdateAutoTradeConfigUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(autoTradeConfigInput),
+  });
+};
+
+export const getUpdateAutoTradeConfigMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAutoTradeConfig>>,
+    TError,
+    { data: BodyType<AutoTradeConfigInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAutoTradeConfig>>,
+  TError,
+  { data: BodyType<AutoTradeConfigInput> },
+  TContext
+> => {
+  const mutationKey = ["updateAutoTradeConfig"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAutoTradeConfig>>,
+    { data: BodyType<AutoTradeConfigInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateAutoTradeConfig(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAutoTradeConfigMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAutoTradeConfig>>
+>;
+export type UpdateAutoTradeConfigMutationBody = BodyType<AutoTradeConfigInput>;
+export type UpdateAutoTradeConfigMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update auto-trade configuration
+ */
+export const useUpdateAutoTradeConfig = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAutoTradeConfig>>,
+    TError,
+    { data: BodyType<AutoTradeConfigInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAutoTradeConfig>>,
+  TError,
+  { data: BodyType<AutoTradeConfigInput> },
+  TContext
+> => {
+  return useMutation(getUpdateAutoTradeConfigMutationOptions(options));
+};
+
+/**
+ * @summary Get current auto-trade engine status
+ */
+export const getGetAutoTradeStatusUrl = () => {
+  return `/api/okx/auto/status`;
+};
+
+export const getAutoTradeStatus = async (
+  options?: RequestInit,
+): Promise<AutoTradeStatus> => {
+  return customFetch<AutoTradeStatus>(getGetAutoTradeStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAutoTradeStatusQueryKey = () => {
+  return [`/api/okx/auto/status`] as const;
+};
+
+export const getGetAutoTradeStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAutoTradeStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAutoTradeStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAutoTradeStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAutoTradeStatus>>
+  > = ({ signal }) => getAutoTradeStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAutoTradeStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAutoTradeStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAutoTradeStatus>>
+>;
+export type GetAutoTradeStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get current auto-trade engine status
+ */
+
+export function useGetAutoTradeStatus<
+  TData = Awaited<ReturnType<typeof getAutoTradeStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAutoTradeStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAutoTradeStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Immediately disable auto-trade until manually re-enabled
+ */
+export const getKillAutoTradeUrl = () => {
+  return `/api/okx/auto/kill`;
+};
+
+export const killAutoTrade = async (
+  options?: RequestInit,
+): Promise<AutoTradeStatus> => {
+  return customFetch<AutoTradeStatus>(getKillAutoTradeUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getKillAutoTradeMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof killAutoTrade>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof killAutoTrade>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["killAutoTrade"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof killAutoTrade>>,
+    void
+  > = () => {
+    return killAutoTrade(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type KillAutoTradeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof killAutoTrade>>
+>;
+
+export type KillAutoTradeMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Immediately disable auto-trade until manually re-enabled
+ */
+export const useKillAutoTrade = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof killAutoTrade>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof killAutoTrade>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getKillAutoTradeMutationOptions(options));
+};
+
+/**
+ * @summary Force a single auto-trade cycle to run immediately (respects all guardrails)
+ */
+export const getRunAutoTradeCycleNowUrl = () => {
+  return `/api/okx/auto/run-now`;
+};
+
+export const runAutoTradeCycleNow = async (
+  options?: RequestInit,
+): Promise<AutoTradeRunResult> => {
+  return customFetch<AutoTradeRunResult>(getRunAutoTradeCycleNowUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRunAutoTradeCycleNowMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runAutoTradeCycleNow>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runAutoTradeCycleNow>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["runAutoTradeCycleNow"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runAutoTradeCycleNow>>,
+    void
+  > = () => {
+    return runAutoTradeCycleNow(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunAutoTradeCycleNowMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runAutoTradeCycleNow>>
+>;
+
+export type RunAutoTradeCycleNowMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Force a single auto-trade cycle to run immediately (respects all guardrails)
+ */
+export const useRunAutoTradeCycleNow = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runAutoTradeCycleNow>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runAutoTradeCycleNow>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getRunAutoTradeCycleNowMutationOptions(options));
+};
+
+/**
+ * @summary Recent AI decisions (auto + user-triggered)
+ */
+export const getListAutoTradeDecisionsUrl = (
+  params?: ListAutoTradeDecisionsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/okx/auto/decisions?${stringifiedParams}`
+    : `/api/okx/auto/decisions`;
+};
+
+export const listAutoTradeDecisions = async (
+  params?: ListAutoTradeDecisionsParams,
+  options?: RequestInit,
+): Promise<AiDecisionRecord[]> => {
+  return customFetch<AiDecisionRecord[]>(getListAutoTradeDecisionsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAutoTradeDecisionsQueryKey = (
+  params?: ListAutoTradeDecisionsParams,
+) => {
+  return [`/api/okx/auto/decisions`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAutoTradeDecisionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAutoTradeDecisions>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAutoTradeDecisionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAutoTradeDecisions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAutoTradeDecisionsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAutoTradeDecisions>>
+  > = ({ signal }) =>
+    listAutoTradeDecisions(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAutoTradeDecisions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAutoTradeDecisionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAutoTradeDecisions>>
+>;
+export type ListAutoTradeDecisionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Recent AI decisions (auto + user-triggered)
+ */
+
+export function useListAutoTradeDecisions<
+  TData = Awaited<ReturnType<typeof listAutoTradeDecisions>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAutoTradeDecisionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAutoTradeDecisions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAutoTradeDecisionsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Recent auto-trade executions (placed + closed orders)
+ */
+export const getListAutoTradeExecutionsUrl = (
+  params?: ListAutoTradeExecutionsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/okx/auto/executions?${stringifiedParams}`
+    : `/api/okx/auto/executions`;
+};
+
+export const listAutoTradeExecutions = async (
+  params?: ListAutoTradeExecutionsParams,
+  options?: RequestInit,
+): Promise<AutoExecutionRecord[]> => {
+  return customFetch<AutoExecutionRecord[]>(
+    getListAutoTradeExecutionsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListAutoTradeExecutionsQueryKey = (
+  params?: ListAutoTradeExecutionsParams,
+) => {
+  return [`/api/okx/auto/executions`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAutoTradeExecutionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAutoTradeExecutions>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAutoTradeExecutionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAutoTradeExecutions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAutoTradeExecutionsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAutoTradeExecutions>>
+  > = ({ signal }) =>
+    listAutoTradeExecutions(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAutoTradeExecutions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAutoTradeExecutionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAutoTradeExecutions>>
+>;
+export type ListAutoTradeExecutionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Recent auto-trade executions (placed + closed orders)
+ */
+
+export function useListAutoTradeExecutions<
+  TData = Awaited<ReturnType<typeof listAutoTradeExecutions>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAutoTradeExecutionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAutoTradeExecutions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAutoTradeExecutionsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Per-model win rate / hit rate from past decisions
+ */
+export const getGetModelLeaderboardUrl = () => {
+  return `/api/okx/auto/leaderboard`;
+};
+
+export const getModelLeaderboard = async (
+  options?: RequestInit,
+): Promise<LeaderboardEntry[]> => {
+  return customFetch<LeaderboardEntry[]>(getGetModelLeaderboardUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetModelLeaderboardQueryKey = () => {
+  return [`/api/okx/auto/leaderboard`] as const;
+};
+
+export const getGetModelLeaderboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof getModelLeaderboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getModelLeaderboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetModelLeaderboardQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getModelLeaderboard>>
+  > = ({ signal }) => getModelLeaderboard({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getModelLeaderboard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetModelLeaderboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getModelLeaderboard>>
+>;
+export type GetModelLeaderboardQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Per-model win rate / hit rate from past decisions
+ */
+
+export function useGetModelLeaderboard<
+  TData = Awaited<ReturnType<typeof getModelLeaderboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getModelLeaderboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetModelLeaderboardQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

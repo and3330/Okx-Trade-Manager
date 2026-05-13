@@ -10,9 +10,13 @@ import RecentOrders from "@/components/RecentOrders";
 import RecentFills from "@/components/RecentFills";
 import HoldingsList from "@/components/HoldingsList";
 import PositionsList from "@/components/PositionsList";
+import IndicatorBar from "@/components/IndicatorBar";
+import AutoTradePanel from "@/components/AutoTradePanel";
+import AutoTradeHistory from "@/components/AutoTradeHistory";
 import { cn } from "@/lib/utils";
 
 type Mode = "spot" | "perp";
+type RightTab = "battle" | "auto" | "history";
 
 export default function Dashboard() {
   const [mode, setMode] = useState<Mode>("spot");
@@ -20,6 +24,8 @@ export default function Dashboard() {
   const [perpInstId, setPerpInstId] = useState<string>("BTC-USDT-SWAP");
   const selectedInstId = mode === "spot" ? spotInstId : perpInstId;
   const setSelectedInstId = mode === "spot" ? setSpotInstId : setPerpInstId;
+  void setSelectedInstId;
+  const [rightTab, setRightTab] = useState<RightTab>("battle");
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -74,6 +80,7 @@ export default function Dashboard() {
         </aside>
 
         <section className="flex flex-1 flex-col overflow-hidden bg-background">
+          {mode === "perp" && <IndicatorBar instId={perpInstId} mode="perp" />}
           <div className="flex-1 overflow-hidden border-b border-border bg-card">
             <PriceChart instId={selectedInstId} />
           </div>
@@ -87,14 +94,35 @@ export default function Dashboard() {
           </div>
         </section>
 
-        <aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-card overflow-y-auto">
-          <AiBattle instId={selectedInstId} mode={mode} />
-          <div className="flex-1">
-            {mode === "spot" ? (
-              <OrderForm instId={spotInstId} />
-            ) : (
-              <PerpOrderForm instId={perpInstId} />
+        <aside className="flex w-[420px] shrink-0 flex-col border-l border-border bg-card overflow-hidden">
+          <div className="flex border-b border-border shrink-0">
+            {(["battle", "auto", "history"] as RightTab[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setRightTab(t)}
+                className={cn(
+                  "flex-1 px-3 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors",
+                  rightTab === t
+                    ? "bg-card text-[#00e59b] border-b-2 border-[#00e59b]"
+                    : "text-muted-foreground hover:text-foreground border-b-2 border-transparent",
+                )}
+              >
+                {t === "battle" ? "AI Battle" : t === "auto" ? "Auto Trade" : "History"}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 overflow-hidden">
+            {rightTab === "battle" && (
+              <div className="flex flex-col h-full overflow-y-auto">
+                <AiBattle instId={selectedInstId} mode={mode} />
+                <div className="flex-1">
+                  {mode === "spot" ? <OrderForm instId={spotInstId} /> : <PerpOrderForm instId={perpInstId} />}
+                </div>
+              </div>
             )}
+            {rightTab === "auto" && <AutoTradePanel />}
+            {rightTab === "history" && <AutoTradeHistory />}
           </div>
         </aside>
       </main>
