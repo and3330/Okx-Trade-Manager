@@ -63,6 +63,10 @@ export const autoTradeExecutionsTable = pgTable("auto_trade_executions", {
   closePrice: numeric("close_price"),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   chosenProviderId: text("chosen_provider_id"),
+  algoSlId: text("algo_sl_id"),
+  algoTpId: text("algo_tp_id"),
+  initialSlPrice: numeric("initial_sl_price"),
+  trailingStage: integer("trailing_stage").notNull().default(0),
 });
 
 export type AutoTradeConfig = typeof autoTradeConfigTable.$inferSelect;

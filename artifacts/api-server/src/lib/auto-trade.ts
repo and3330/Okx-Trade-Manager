@@ -15,9 +15,12 @@ import {
   closePerpPosition,
   fetchTicker,
   fetchAtr,
+  fetchPendingAlgoOrders,
+  amendAlgoSlTrigger,
   type AccountBalanceData,
   type PerpPositionData,
 } from "./okx";
+import { and, isNull, isNotNull } from "drizzle-orm";
 
 const SINGLETON_ID = 1;
 
@@ -308,10 +311,7 @@ async function processInstrument(args: {
 }): Promise<RunCycleEntry> {
   const { cfg, instId, balance, heldUsdt, positions, openCount } = args;
 
-  // Cooldown
-  if (await inCooldown(instId, cfg.cooldownMinutes)) {
-    return { instId, action: "skipped", reason: "cooldown", executionId: null };
-  }
+  // (Cooldown moved below consensus computation — close votes bypass cooldown.)
 
   // Pipeline (use cfg-bounded margin/leverage so AI sees the cap)
   const maxMarginByPct = (balance.totalEquityUsd * cfg.maxMarginPctPerTrade) / 100;
@@ -385,6 +385,11 @@ async function processInstrument(args: {
     }
   }
 
+  // Cooldown gate: only blocks new opens. Close votes already returned above.
+  if (await inCooldown(instId, cfg.cooldownMinutes)) {
+    return { instId, action: "skipped", reason: "cooldown", executionId: null };
+  }
+
   // Open action — but cap concurrent positions
   if (!existingPos && openCount >= cfg.maxConcurrentPositions) {
     return { instId, action: "skipped", reason: `max_positions ${openCount}/${cfg.maxConcurrentPositions}`, executionId: null };
@@ -421,15 +426,16 @@ async function processInstrument(args: {
     return { instId, action: "skipped", reason: `invalid_sl_short sl=${stopLossPrice} px=${pipeline.lastPrice}`, executionId: null };
   }
 
-  // Force TP via 2:1 risk:reward if not provided — every trade must have an exit plan
-  // attached server-side at OKX, otherwise profit-taking depends on luck (next-cycle close vote).
+  // Force TP via confidence-tiered R:R if model didn't provide one.
+  // High conviction (avg confidence >= 9) → let profit run with 3:1; otherwise 2:1.
   let takeProfitPrice = consensus.medianTakeProfitPrice;
   if (takeProfitPrice == null) {
     const slDistance = Math.abs(pipeline.lastPrice - stopLossPrice);
+    const rrRatio = consensus.avgConfidence >= 9 ? 3 : 2;
     if (slDistance > 0) {
       takeProfitPrice = side === "long"
-        ? pipeline.lastPrice + slDistance * 2
-        : pipeline.lastPrice - slDistance * 2;
+        ? pipeline.lastPrice + slDistance * rrRatio
+        : pipeline.lastPrice - slDistance * rrRatio;
     }
   }
   // Sanity check TP: must be on profit side with non-trivial distance.
@@ -439,11 +445,38 @@ async function processInstrument(args: {
     if (side === "short" && tp >= pipeline.lastPrice - minDistance) takeProfitPrice = null;
   }
 
+  // Deterministic client ID for the attached OCO algo so we can locate it without ambiguity.
+  // Format: "at" + decisionId + "x" + 8 random hex chars (OKX algoClOrdId max ~32 chars, alphanumeric).
+  const algoClOrdId = `at${decisionId}x${Math.random().toString(16).slice(2, 10)}`;
+
   try {
     const result = await placePerpMarketOrder({
       instId, side, marginUsdt: margin, leverage,
       stopLossPrice, takeProfitPrice,
+      algoClOrdId: stopLossPrice != null || takeProfitPrice != null ? algoClOrdId : null,
     });
+    // Match the algo we just attached by algoClOrdId. Bounded retry handles eventual consistency.
+    let capturedAlgoSlId: string | null = null;
+    let capturedAlgoTpId: string | null = null;
+    if (stopLossPrice != null || takeProfitPrice != null) {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const algos = await fetchPendingAlgoOrders(instId);
+          const ours = algos.find((a) => a.algoClOrdId === algoClOrdId);
+          if (ours) {
+            if (ours.slTriggerPx != null) capturedAlgoSlId = ours.algoId;
+            if (ours.tpTriggerPx != null) capturedAlgoTpId = ours.algoId;
+            break;
+          }
+        } catch (e) {
+          logger.warn({ err: e, instId, attempt }, "fetch algo IDs attempt failed");
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      if (!capturedAlgoSlId) {
+        logger.warn({ instId, algoClOrdId }, "could not locate attached algo by client ID; trailing disabled for this trade");
+      }
+    }
     const [exec] = await db.insert(autoTradeExecutionsTable).values({
       decisionId, instId, side,
       marginUsdt: String(margin), leverage,
@@ -452,6 +485,10 @@ async function processInstrument(args: {
       ordId: result.ordId,
       status: "submitted", reason: "consensus_open",
       chosenProviderId: consensus.chosenProviderId,
+      algoSlId: capturedAlgoSlId,
+      algoTpId: capturedAlgoTpId,
+      initialSlPrice: String(stopLossPrice),
+      trailingStage: 0,
     }).returning({ id: autoTradeExecutionsTable.id });
     return { instId, action: "executed_open", reason: null, executionId: exec!.id };
   } catch (err) {
@@ -466,6 +503,119 @@ async function processInstrument(args: {
   }
 }
 
+// ---------- Trailing stop ----------
+
+/**
+ * Two-stage trailing stop, evaluated every minute:
+ *   - Stage 0 → 1: when unrealized profit reaches +1R, move SL up to entry price (break-even).
+ *   - Stage 1 → 2: when unrealized profit reaches +2R, move SL to entry +1R (lock 1R profit).
+ *
+ * R = |entry - initialSlPrice|. Only ratchets in the favorable direction.
+ */
+let trailingTickRunning = false;
+
+export async function runTrailingTick(): Promise<void> {
+  if (trailingTickRunning) return; // single-flight: skip if previous tick still running
+  trailingTickRunning = true;
+  try {
+    await runTrailingTickInner();
+  } finally {
+    trailingTickRunning = false;
+  }
+}
+
+async function runTrailingTickInner(): Promise<void> {
+  // Pull all submitted-and-not-closed open executions that still have an algo SL we can amend.
+  const open = await db
+    .select()
+    .from(autoTradeExecutionsTable)
+    .where(
+      and(
+        eq(autoTradeExecutionsTable.status, "submitted"),
+        isNull(autoTradeExecutionsTable.closedAt),
+        isNotNull(autoTradeExecutionsTable.algoSlId),
+        isNotNull(autoTradeExecutionsTable.entryPrice),
+        isNotNull(autoTradeExecutionsTable.initialSlPrice),
+      ),
+    );
+  if (open.length === 0) return;
+
+  // Fetch live positions once and index by instId.
+  const positions = await fetchPerpPositions().catch(() => [] as PerpPositionData[]);
+  const posByInst = new Map(positions.map((p) => [p.instId, p]));
+
+  for (const row of open) {
+    const side = row.side as "long" | "short";
+    if (side !== "long" && side !== "short") continue;
+
+    const pos = posByInst.get(row.instId);
+    if (!pos || pos.contracts === 0) {
+      // Position closed externally (TP/SL hit, manual). Mark as closed so we stop polling.
+      await db
+        .update(autoTradeExecutionsTable)
+        .set({ closedAt: new Date(), status: "closed" })
+        .where(eq(autoTradeExecutionsTable.id, row.id));
+      continue;
+    }
+
+    const entry = Number(row.entryPrice);
+    const initialSl = Number(row.initialSlPrice);
+    const mark = pos.markPx;
+    if (!(entry > 0) || !(initialSl > 0) || !(mark > 0)) continue;
+
+    const rDistance = Math.abs(entry - initialSl);
+    if (rDistance <= 0) continue;
+
+    const profitR = side === "long" ? (mark - entry) / rDistance : (entry - mark) / rDistance;
+    const stage = row.trailingStage ?? 0;
+
+    let targetStage = stage;
+    let targetSl: number | null = null;
+
+    if (stage < 2 && profitR >= 2) {
+      targetStage = 2;
+      targetSl = side === "long" ? entry + rDistance : entry - rDistance;
+    } else if (stage < 1 && profitR >= 1) {
+      targetStage = 1;
+      targetSl = entry; // break-even
+    }
+
+    if (targetSl == null || targetStage === stage) continue;
+
+    try {
+      await amendAlgoSlTrigger({
+        instId: row.instId,
+        algoId: row.algoSlId!,
+        newSlTriggerPx: targetSl,
+      });
+      // Conditional update: only advance if stage hasn't moved underneath us.
+      const updated = await db
+        .update(autoTradeExecutionsTable)
+        .set({ trailingStage: targetStage })
+        .where(
+          and(
+            eq(autoTradeExecutionsTable.id, row.id),
+            eq(autoTradeExecutionsTable.trailingStage, stage),
+          ),
+        )
+        .returning({ id: autoTradeExecutionsTable.id });
+      if (updated.length === 0) {
+        logger.warn(
+          { instId: row.instId, expectedStage: stage },
+          "trailing stage advanced concurrently; amend already applied to OKX",
+        );
+      } else {
+        logger.info(
+          { instId: row.instId, side, stage: targetStage, newSl: targetSl, profitR: profitR.toFixed(2) },
+          "trailing-stop ratcheted",
+        );
+      }
+    } catch (err) {
+      logger.warn({ err, instId: row.instId, algoId: row.algoSlId }, "trailing-stop amend failed");
+    }
+  }
+}
+
 // ---------- Scheduler ----------
 
 let timer: NodeJS.Timeout | null = null;
@@ -475,14 +625,23 @@ export function startScheduler(): void {
   if (timer) return;
   timer = setInterval(() => {
     void (async () => {
+      const now = new Date();
       try {
-        const now = new Date();
-        // Trigger once per hour at the first minute
+        const cfg = await getOrCreateConfig().catch(() => null);
+        const enabled = !!cfg?.enabled;
+        const killed = !!(cfg?.killUntil && new Date(cfg.killUntil) > now);
+
+        // Trailing-stop check runs every minute when engine is enabled (not killed).
+        if (enabled && !killed) {
+          await runTrailingTick().catch((err) =>
+            logger.error({ err }, "trailing tick failed"),
+          );
+        }
+
+        // Hourly consensus cycle at HH:01.
         if (now.getMinutes() === 1 && now.getHours() !== lastTriggeredHour) {
           lastTriggeredHour = now.getHours();
-          const cfg = await getOrCreateConfig().catch(() => null);
-          if (!cfg || !cfg.enabled) return;
-          if (cfg.killUntil && new Date(cfg.killUntil) > now) return;
+          if (!enabled || killed) return;
           logger.info({ minute: now.getMinutes() }, "auto-trade cycle starting");
           const result = await runCycle();
           logger.info({ entries: result.perInstrument.length }, "auto-trade cycle done");
@@ -492,7 +651,7 @@ export function startScheduler(): void {
       }
     })();
   }, 60 * 1000);
-  logger.info("auto-trade scheduler started");
+  logger.info("auto-trade scheduler started (trailing + hourly cycle)");
 }
 
 // ---------- Status & Listing ----------

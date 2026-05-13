@@ -716,6 +716,8 @@ export type PlacePerpOrderInput = {
   leverage: number;
   takeProfitPrice?: number | null;
   stopLossPrice?: number | null;
+  /** Optional client ID for the attached OCO algo so we can deterministically locate it after submission. */
+  algoClOrdId?: string | null;
 };
 
 export type PlacePerpOrderOutput = {
@@ -805,7 +807,10 @@ export async function placePerpMarketOrder(
     algo["slTriggerPx"] = String(input.stopLossPrice);
     algo["slOrdPx"] = "-1";
   }
-  if (Object.keys(algo).length > 0) body["attachAlgoOrds"] = [algo];
+  if (Object.keys(algo).length > 0) {
+    if (input.algoClOrdId) algo["algoClOrdId"] = input.algoClOrdId;
+    body["attachAlgoOrds"] = [algo];
+  }
 
   type Row = { ordId: string; sCode: string; sMsg: string };
   const rows = await okxRequest<Row[]>("POST", "/api/v5/trade/order", { body });
@@ -824,6 +829,69 @@ export async function placePerpMarketOrder(
     status: "submitted",
     message: null,
   };
+}
+
+export type PendingAlgoOrder = {
+  algoId: string;
+  algoClOrdId: string | null;
+  instId: string;
+  ordType: string;
+  slTriggerPx: number | null;
+  tpTriggerPx: number | null;
+  side: string;
+  posSide: string | null;
+  sz: string;
+};
+
+type OkxAlgoRow = {
+  algoId: string;
+  algoClOrdId?: string;
+  instId: string;
+  ordType: string;
+  slTriggerPx?: string;
+  tpTriggerPx?: string;
+  side: string;
+  posSide?: string;
+  sz: string;
+  state?: string;
+};
+
+export async function fetchPendingAlgoOrders(instId: string): Promise<PendingAlgoOrder[]> {
+  // OKX algo orders attached via attachAlgoOrds appear as ordType="conditional" or "oco" in pending list.
+  const rows = await okxRequest<OkxAlgoRow[]>(
+    "GET",
+    "/api/v5/trade/orders-algo-pending",
+    { query: { instType: "SWAP", instId } },
+  );
+  return rows.map((r) => ({
+    algoId: r.algoId,
+    algoClOrdId: r.algoClOrdId && r.algoClOrdId !== "" ? r.algoClOrdId : null,
+    instId: r.instId,
+    ordType: r.ordType,
+    slTriggerPx: r.slTriggerPx && r.slTriggerPx !== "" ? num(r.slTriggerPx) : null,
+    tpTriggerPx: r.tpTriggerPx && r.tpTriggerPx !== "" ? num(r.tpTriggerPx) : null,
+    side: r.side,
+    posSide: r.posSide ?? null,
+    sz: r.sz,
+  }));
+}
+
+export async function amendAlgoSlTrigger(args: {
+  instId: string;
+  algoId: string;
+  newSlTriggerPx: number;
+}): Promise<void> {
+  const body: Record<string, unknown> = {
+    instId: args.instId,
+    algoId: args.algoId,
+    newSlTriggerPx: String(args.newSlTriggerPx),
+    newSlOrdPx: "-1",
+  };
+  type Row = { sCode: string; sMsg: string };
+  const rows = await okxRequest<Row[]>("POST", "/api/v5/trade/amend-algos", { body });
+  const r = rows[0];
+  if (!r) throw new OkxError("NO_RESPONSE", "OKX returned no amend result", 502);
+  if (r.sCode !== "0") throw new OkxError(r.sCode, r.sMsg || "Amend rejected", 400);
 }
 
 export type ClosePerpInput = {
