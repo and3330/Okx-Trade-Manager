@@ -38,15 +38,15 @@ export default function PositionsList({ onSelectInstId }: { onSelectInstId?: (in
       { data: { instId: pending.instId, posSide: pending.posSide, marginMode: "isolated" } },
       {
         onSuccess: () => {
-          toast.success(`Closed ${pending.baseCcy} ${pending.posSide}`);
+          toast.success(`已平倉：${pending.baseCcy} ${pending.posSide === "long" ? "多" : "空"}`);
           setPending(null);
           queryClient.invalidateQueries({ queryKey: getListPerpPositionsQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetAccountBalanceQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetAccountSummaryQueryKey() });
         },
         onError: (err: any) => {
-          const msg = err?.data?.error || err.message || "Failed to close";
-          toast.error(`Close failed: ${msg}`);
+          const msg = err?.data?.error || err.message || "平倉失敗";
+          toast.error(`平倉失敗：${msg}`);
         },
       },
     );
@@ -55,19 +55,19 @@ export default function PositionsList({ onSelectInstId }: { onSelectInstId?: (in
   return (
     <div className="flex h-full flex-col">
       <div className="px-4 py-2 text-xs font-semibold text-muted-foreground tracking-wider uppercase border-b border-border bg-card">
-        Positions
+        合約持倉
       </div>
       <ScrollArea className="flex-1">
         {isLoading ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">Loading...</div>
+          <div className="p-4 text-center text-sm text-muted-foreground">載入中...</div>
         ) : !positions || positions.length === 0 ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">No open positions</div>
+          <div className="p-4 text-center text-sm text-muted-foreground">尚無持倉</div>
         ) : (
           <div className="divide-y divide-border">
             {positions.map((p) => {
               const baseCcy = p.instId.replace("-USDT-SWAP", "");
-              const sideLabel = p.posSide === "net" ? (p.contracts >= 0 ? "Long" : "Short") : p.posSide === "long" ? "Long" : "Short";
-              const isLong = sideLabel === "Long";
+              const sideLabel = p.posSide === "net" ? (p.contracts >= 0 ? "多" : "空") : p.posSide === "long" ? "多" : "空";
+              const isLong = sideLabel === "多";
               const pnlPositive = p.unrealizedPnlUsd >= 0;
               return (
                 <div key={`${p.instId}-${p.posSide}`} className="p-3 hover:bg-muted/50 transition-colors">
@@ -105,7 +105,7 @@ export default function PositionsList({ onSelectInstId }: { onSelectInstId?: (in
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-2 text-[11px] text-muted-foreground font-mono">
-                    <span>Mark {p.markPx} {p.liquidationPx ? `· Liq ${p.liquidationPx.toFixed(4)}` : ""}</span>
+                    <span>標記 {p.markPx} {p.liquidationPx ? `· 強平 ${p.liquidationPx.toFixed(4)}` : ""}</span>
                     <Button
                       type="button"
                       size="sm"
@@ -113,7 +113,7 @@ export default function PositionsList({ onSelectInstId }: { onSelectInstId?: (in
                       className="h-6 px-2 text-[10px] uppercase"
                       onClick={() => setPending({ instId: p.instId, posSide: p.posSide, baseCcy })}
                     >
-                      Close
+                      平倉
                     </Button>
                   </div>
                 </div>
@@ -126,19 +126,19 @@ export default function PositionsList({ onSelectInstId }: { onSelectInstId?: (in
       <AlertDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle>Close position?</AlertDialogTitle>
+            <AlertDialogTitle>確定平倉？</AlertDialogTitle>
             <AlertDialogDescription className="text-foreground mt-2">
-              Close your {pending?.baseCcy} {pending?.posSide} position at market. This will realize the current PnL immediately.
+              將以市價平掉你的 {pending?.baseCcy} {pending?.posSide === "long" ? "多" : "空"} 倉，會立即實現當前盈虧。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={closeMut.isPending} className="bg-transparent border-border hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={closeMut.isPending} className="bg-transparent border-border hover:bg-muted text-foreground">取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmClose}
               disabled={closeMut.isPending}
               className="bg-[#ff4d4d] hover:bg-[#e63939] text-white border-0"
             >
-              {closeMut.isPending ? "Closing..." : "Confirm Close"}
+              {closeMut.isPending ? "平倉中..." : "確認平倉"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

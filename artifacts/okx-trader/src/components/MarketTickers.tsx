@@ -15,12 +15,12 @@ export default function MarketTickers({ selectedInstId, onSelectInstId }: Market
   return (
     <div className="flex h-full flex-col">
       <div className="px-4 py-2 flex items-center justify-between border-b border-border bg-card">
-        <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">Markets</span>
-        <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">24H Chg</span>
+        <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">現貨行情</span>
+        <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">24H 漲跌</span>
       </div>
       <ScrollArea className="flex-1">
         {isLoading ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">Loading...</div>
+          <div className="p-4 text-center text-sm text-muted-foreground">載入中...</div>
         ) : (
           <div className="divide-y divide-border">
             {tickers?.map((ticker) => {
@@ -36,7 +36,7 @@ export default function MarketTickers({ selectedInstId, onSelectInstId }: Market
                 >
                   <div className="flex flex-col">
                     <span className="font-bold text-sm text-foreground">{ticker.instId}</span>
-                    <span className="text-xs text-muted-foreground mt-0.5 font-mono">Vol: {Math.floor(ticker.vol24h).toLocaleString()}</span>
+                    <span className="text-xs text-muted-foreground mt-0.5 font-mono">量: {Math.floor(ticker.vol24h).toLocaleString()}</span>
                   </div>
                   <div className="flex flex-col items-end">
                     <span className="font-mono text-sm text-foreground">{ticker.last}</span>

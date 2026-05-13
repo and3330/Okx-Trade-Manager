@@ -11,13 +11,13 @@ export default function RecentOrders() {
   return (
     <div className="flex h-full flex-col">
       <div className="px-4 py-2 border-b border-border bg-card">
-        <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">Recent Orders</span>
+        <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">近期訂單</span>
       </div>
       <ScrollArea className="flex-1">
         {isLoading ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">Loading orders...</div>
+          <div className="p-4 text-center text-sm text-muted-foreground">載入訂單中...</div>
         ) : orders?.length === 0 ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">No recent orders</div>
+          <div className="p-4 text-center text-sm text-muted-foreground">尚無訂單</div>
         ) : (
           <div className="divide-y divide-border">
             {orders?.map((order) => (
@@ -28,7 +28,7 @@ export default function RecentOrders() {
                       "font-bold uppercase text-xs px-1.5 py-0.5 rounded",
                       order.side === "buy" ? "bg-[#00e59b]/20 text-[#00e59b]" : "bg-[#ff4d4d]/20 text-[#ff4d4d]"
                     )}>
-                      {order.side}
+                      {order.side === "buy" ? "買入" : "賣出"}
                     </span>
                     <span className="font-bold text-foreground">{order.instId}</span>
                   </div>
@@ -43,7 +43,7 @@ export default function RecentOrders() {
                       "font-semibold",
                       order.state === "filled" ? "text-muted-foreground" : "text-primary"
                     )}>
-                      {order.state.toUpperCase()}
+                      {order.state === "filled" ? "已成交" : order.state === "live" ? "掛單中" : order.state === "canceled" ? "已取消" : order.state === "partially_filled" ? "部分成交" : order.state.toUpperCase()}
                     </span>
                   </div>
                 </div>

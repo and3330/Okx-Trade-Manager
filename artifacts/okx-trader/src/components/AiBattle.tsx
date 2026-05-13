@@ -98,7 +98,7 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
         onSuccess: (res) => setData(res as unknown as ResearchResponse),
         onError: (err: unknown) => {
           const e = err as { data?: { error?: string }; message?: string };
-          setError(e?.data?.error || e?.message || "AI battle failed");
+          setError(e?.data?.error || e?.message || "AI 對戰失敗");
         },
       },
     );
@@ -128,8 +128,8 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
       placeOrder.mutate(
         { data: { instId: pendingInstId, side: a, notionalUsd: rec.sizeUsdt, stopLossPrice: rec.stopLossPrice ?? undefined } },
         {
-          onSuccess: (r) => { toast.success(`Order placed via ${rec.providerLabel}: ${r.ordId}`); setPending(null); invalidateAll(); },
-          onError: (err: any) => { toast.error(`Order failed: ${err?.data?.error || err?.message}`); setPending(null); },
+          onSuccess: (r) => { toast.success(`已依 ${rec.providerLabel} 下單：${r.ordId}`); setPending(null); invalidateAll(); },
+          onError: (err: any) => { toast.error(`下單失敗：${err?.data?.error || err?.message}`); setPending(null); },
         },
       );
     } else if (a === "long" || a === "short") {
@@ -146,16 +146,16 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
           },
         },
         {
-          onSuccess: (r) => { toast.success(`Perp opened via ${rec.providerLabel}: ${r.contracts} ct`); setPending(null); invalidateAll(); },
-          onError: (err: any) => { toast.error(`Order failed: ${err?.data?.error || err?.message}`); setPending(null); },
+          onSuccess: (r) => { toast.success(`已依 ${rec.providerLabel} 開倉：${r.contracts} 張`); setPending(null); invalidateAll(); },
+          onError: (err: any) => { toast.error(`下單失敗：${err?.data?.error || err?.message}`); setPending(null); },
         },
       );
     } else if (a === "close") {
       closePerp.mutate(
         { data: { instId: pendingInstId, marginMode: "isolated" } },
         {
-          onSuccess: () => { toast.success(`Closed via ${rec.providerLabel}`); setPending(null); invalidateAll(); },
-          onError: (err: any) => { toast.error(`Close failed: ${err?.data?.error || err?.message}`); setPending(null); },
+          onSuccess: () => { toast.success(`已依 ${rec.providerLabel} 平倉`); setPending(null); invalidateAll(); },
+          onError: (err: any) => { toast.error(`平倉失敗：${err?.data?.error || err?.message}`); setPending(null); },
         },
       );
     } else {
@@ -164,11 +164,11 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
   };
 
   function actionPill(r: Rec) {
-    if (!r.ok) return <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border border-destructive/40 bg-destructive/15 text-destructive">error</span>;
+    if (!r.ok) return <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border border-destructive/40 bg-destructive/15 text-destructive">錯誤</span>;
     if (!r.action) return null;
     return (
       <span className={cn("text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border", actionStyles(r.action))}>
-        {r.action}
+        {actionLabel(r.action)}
         {r.confidence != null && <span className="ml-1 opacity-70">· {r.confidence}/10</span>}
       </span>
     );
@@ -180,29 +180,39 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
     if (isPerpOpen) {
       return (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-mono mb-2">
-          {r.marginUsdt != null && <span><span className="text-muted-foreground">margin:</span> <span className="text-foreground">{r.marginUsdt.toFixed(2)} USDT</span></span>}
-          {r.leverage != null && <span><span className="text-muted-foreground">lev:</span> <span className="text-foreground">{r.leverage}x</span></span>}
-          {r.takeProfitPrice != null && <span><span className="text-muted-foreground">TP:</span> <span className="text-foreground">{r.takeProfitPrice}</span></span>}
-          {r.stopLossPrice != null && <span><span className="text-muted-foreground">SL:</span> <span className="text-foreground">{r.stopLossPrice}</span></span>}
+          {r.marginUsdt != null && <span><span className="text-muted-foreground">保證金:</span> <span className="text-foreground">{r.marginUsdt.toFixed(2)} USDT</span></span>}
+          {r.leverage != null && <span><span className="text-muted-foreground">槓桿:</span> <span className="text-foreground">{r.leverage}x</span></span>}
+          {r.takeProfitPrice != null && <span><span className="text-muted-foreground">止盈:</span> <span className="text-foreground">{r.takeProfitPrice}</span></span>}
+          {r.stopLossPrice != null && <span><span className="text-muted-foreground">止損:</span> <span className="text-foreground">{r.stopLossPrice}</span></span>}
         </div>
       );
     }
     if (isSpotTrade) {
       return (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-mono mb-2">
-          {r.sizeUsdt != null && <span><span className="text-muted-foreground">size:</span> <span className="text-foreground">{r.sizeUsdt.toFixed(2)} USDT</span></span>}
-          {r.stopLossPrice != null && <span><span className="text-muted-foreground">SL:</span> <span className="text-foreground">{r.stopLossPrice}</span></span>}
+          {r.sizeUsdt != null && <span><span className="text-muted-foreground">金額:</span> <span className="text-foreground">{r.sizeUsdt.toFixed(2)} USDT</span></span>}
+          {r.stopLossPrice != null && <span><span className="text-muted-foreground">止損:</span> <span className="text-foreground">{r.stopLossPrice}</span></span>}
         </div>
       );
     }
     return null;
   }
 
+  function actionLabel(action: string | null | undefined) {
+    if (action === "buy") return "買入";
+    if (action === "sell") return "賣出";
+    if (action === "long") return "做多";
+    if (action === "short") return "做空";
+    if (action === "close") return "平倉";
+    if (action === "hold") return "觀望";
+    return action ?? "";
+  }
+
   function executeLabel(r: Rec) {
-    if (r.action === "buy" || r.action === "sell") return `Execute ${r.action} ${r.sizeUsdt?.toFixed(2)} USDT`;
-    if (r.action === "long" || r.action === "short") return `Execute ${r.action} ${r.marginUsdt?.toFixed(0)}U @${r.leverage}x`;
-    if (r.action === "close") return "Execute close position";
-    return "Execute";
+    if (r.action === "buy" || r.action === "sell") return `執行 ${actionLabel(r.action)} ${r.sizeUsdt?.toFixed(2)} USDT`;
+    if (r.action === "long" || r.action === "short") return `執行 ${actionLabel(r.action)} ${r.marginUsdt?.toFixed(0)}U @${r.leverage}x`;
+    if (r.action === "close") return "執行平倉";
+    return "執行";
   }
 
   function isExecutable(r: Rec) {
@@ -218,16 +228,16 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card">
         <div className="flex flex-col">
           <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">
-            AI Trade Battle {mode === "perp" && <span className="text-amber-400">· Perp</span>}
+            AI 交易對戰 {mode === "perp" && <span className="text-amber-400">· 合約</span>}
           </span>
           {data && !stale && (
             <span className="text-[10px] text-muted-foreground mt-0.5">
-              {format(new Date(data.generatedAt), "HH:mm:ss")} · last {data.lastPrice}
+              {format(new Date(data.generatedAt), "HH:mm:ss")} · 最新價 {data.lastPrice}
             </span>
           )}
         </div>
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onRun} disabled={recommend.isPending}>
-          {recommend.isPending ? "Running..." : data && !stale ? "Re-run" : `Battle on ${baseLabel}`}
+          {recommend.isPending ? "分析中..." : data && !stale ? "重跑" : `分析 ${baseLabel}`}
         </Button>
       </div>
 
@@ -236,11 +246,11 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
         {!error && !data && !recommend.isPending && (
           <p className="text-xs text-muted-foreground leading-relaxed px-1 py-2">
             {mode === "perp"
-              ? `按下按鈕跑完整 3 階段 AI 研究(技術分析→資金/情緒分析→4 模型決策)針對 ${instId} 永續合約。確認後才送單。`
-              : `Run the full 3-stage research pipeline (technical analyst → sentiment analyst → 4-model decision battle) for ${instId}. You stay in control: nothing trades unless you click Execute.`}
+              ? `按下按鈕跑完整 3 階段 AI 研究（技術分析 → 資金/情緒分析 → 4 模型決策）針對 ${instId} 永續合約。確認後才送單。`
+              : `按下按鈕對 ${instId} 跑完整 3 階段 AI 研究（技術分析 → 4 模型決策）。需手動點「執行」才會真的下單。`}
           </p>
         )}
-        {recommend.isPending && <div className="text-xs text-muted-foreground font-mono px-1 py-2">Stage 1 + 2 in parallel, then 4-model battle...</div>}
+        {recommend.isPending && <div className="text-xs text-muted-foreground font-mono px-1 py-2">第 1 + 2 階段平行進行中，接著 4 模型決策...</div>}
 
         {data && !stale && (data.technicalSummary || data.sentimentSummary || data.indicatorTextByBar) && (
           <div className="space-y-2 mb-2">
@@ -257,7 +267,7 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
                 {showStage1 && <p className="px-3 pb-2 text-[11px] text-muted-foreground leading-snug whitespace-pre-wrap">{data.technicalSummary}</p>}
               </div>
             )}
-            {data.sentimentSummary && data.sentimentSummary !== "(現貨模式不分析資金面)" && (
+            {data.sentimentSummary && data.sentimentSummary !== "(現貨模式不分析資金面)" && data.sentimentSummary !== "(spot mode skips funding analysis)" && (
               <div className="border border-border rounded-md bg-background/40">
                 <button
                   type="button"
@@ -289,7 +299,7 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
 
         {stale && (
           <div className="text-xs text-amber-400 px-1">
-            Showing results for {data?.instId}. Click Re-run to update for {instId}.
+            目前顯示的是 {data?.instId} 的結果，點「重跑」可更新為 {instId}。
           </div>
         )}
 
@@ -314,7 +324,7 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
                     disabled={stale}
                     onClick={() => setPending({ rec: r, instId: recsInstId })}
                   >
-                    {stale ? `Stale — re-run for ${instId}` : executeLabel(r)}
+                    {stale ? `舊資料 — 請對 ${instId} 重跑` : executeLabel(r)}
                   </Button>
                 )}
               </>
@@ -328,38 +338,38 @@ export default function AiBattle({ instId, mode = "spot" }: { instId: string; mo
       <AlertDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm AI-suggested order</AlertDialogTitle>
+            <AlertDialogTitle>確認執行 AI 建議的訂單</AlertDialogTitle>
             <AlertDialogDescription className="text-base text-foreground mt-4 space-y-2">
               {pending && (
                 <>
-                  <div>Following <strong>{pending.rec.providerLabel}</strong> on <strong>{pending.instId}</strong>:</div>
+                  <div>跟隨 <strong>{pending.rec.providerLabel}</strong> 在 <strong>{pending.instId}</strong> 上：</div>
                   {(pending.rec.action === "buy" || pending.rec.action === "sell") && (
-                    <div className="font-mono">{pending.rec.action.toUpperCase()} {pending.rec.sizeUsdt?.toFixed(2)} USDT</div>
+                    <div className="font-mono">{actionLabel(pending.rec.action)} {pending.rec.sizeUsdt?.toFixed(2)} USDT</div>
                   )}
                   {(pending.rec.action === "long" || pending.rec.action === "short") && (
                     <>
-                      <div className="font-mono">{pending.rec.action.toUpperCase()} margin {pending.rec.marginUsdt} USDT @ {pending.rec.leverage}x</div>
-                      <div className="font-mono text-xs">notional ~${((pending.rec.marginUsdt ?? 0) * (pending.rec.leverage ?? 0)).toFixed(2)}</div>
+                      <div className="font-mono">{actionLabel(pending.rec.action)} 保證金 {pending.rec.marginUsdt} USDT @ {pending.rec.leverage}x</div>
+                      <div className="font-mono text-xs">名目價值 ~${((pending.rec.marginUsdt ?? 0) * (pending.rec.leverage ?? 0)).toFixed(2)}</div>
                     </>
                   )}
                   {pending.rec.action === "close" && (
-                    <div className="font-mono">CLOSE position on {pending.instId} at market</div>
+                    <div className="font-mono">以市價平掉 {pending.instId} 倉位</div>
                   )}
-                  {pending.rec.takeProfitPrice != null && <div className="font-mono text-xs">TP: {pending.rec.takeProfitPrice}</div>}
-                  {pending.rec.stopLossPrice != null && <div className="font-mono text-xs">SL: {pending.rec.stopLossPrice}</div>}
-                  <div className="text-xs text-muted-foreground pt-2">This places a real OKX market order. Continue?</div>
+                  {pending.rec.takeProfitPrice != null && <div className="font-mono text-xs">止盈: {pending.rec.takeProfitPrice}</div>}
+                  {pending.rec.stopLossPrice != null && <div className="font-mono text-xs">止損: {pending.rec.stopLossPrice}</div>}
+                  <div className="text-xs text-muted-foreground pt-2">這會在 OKX 真的送出市價單，確定繼續？</div>
                 </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-transparent border-border hover:bg-muted text-foreground" disabled={submitting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="bg-transparent border-border hover:bg-muted text-foreground" disabled={submitting}>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmExecute}
               disabled={submitting}
               className={cn("border-0 disabled:opacity-60", executeButtonClass(pending?.rec.action))}
             >
-              {submitting ? "Placing..." : `Confirm ${pending?.rec.action ?? ""}`}
+              {submitting ? "送出中..." : `確認 ${actionLabel(pending?.rec.action)}`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

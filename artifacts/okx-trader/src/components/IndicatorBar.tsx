@@ -54,24 +54,24 @@ export default function IndicatorBar({ instId, mode = "perp" }: { instId: string
         {snap && !stale ? (
           <>
             {fr != null && (
-              <Tile label="FUNDING/8H" value={`${(fr * 100).toFixed(4)}%`} tone={fr > 0.0005 ? "neg" : fr < -0.0001 ? "pos" : "neutral"} />
+              <Tile label="資金費率/8H" value={`${(fr * 100).toFixed(4)}%`} tone={fr > 0.0005 ? "neg" : fr < -0.0001 ? "pos" : "neutral"} />
             )}
             {lsr != null && (
-              <Tile label="L/S RATIO" value={lsr.toFixed(2)} tone={lsr > 1.5 ? "neg" : lsr < 0.7 ? "pos" : "neutral"} />
+              <Tile label="多空比" value={lsr.toFixed(2)} tone={lsr > 1.5 ? "neg" : lsr < 0.7 ? "pos" : "neutral"} />
             )}
             {tbr != null && (
-              <Tile label="BUY %" value={`${(tbr * 100).toFixed(1)}%`} tone={tbr > 0.6 ? "pos" : tbr < 0.4 ? "neg" : "neutral"} />
+              <Tile label="主買佔比" value={`${(tbr * 100).toFixed(1)}%`} tone={tbr > 0.6 ? "pos" : tbr < 0.4 ? "neg" : "neutral"} />
             )}
             {atr != null && <Tile label="ATR 1H" value={atr.toFixed(2)} />}
           </>
         ) : (
           <div className="px-3 py-2 text-[11px] text-muted-foreground">
-            {research.isPending ? "Loading market context..." : stale ? `Stale (was ${snapInst})` : "Click Refresh to load funding / OI / sentiment context."}
+            {research.isPending ? "載入市場數據中..." : stale ? `舊資料 (${snapInst})` : "點「載入」抓取資金費率 / 持倉 / 情緒等市場數據。"}
           </div>
         )}
       </div>
       <Button size="sm" variant="ghost" className="h-7 mr-2 text-[11px]" onClick={refresh} disabled={research.isPending}>
-        {research.isPending ? "..." : snap ? "Refresh" : "Load"}
+        {research.isPending ? "..." : snap ? "重新載入" : "載入"}
       </Button>
     </div>
   );

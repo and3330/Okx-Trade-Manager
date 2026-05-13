@@ -45,7 +45,7 @@ export default function AutoTradePanel() {
     if (cfgData && !draft) setDraft(cfgData as Cfg);
   }, [cfgData, draft]);
 
-  if (!draft) return <div className="p-4 text-xs text-muted-foreground">Loading config...</div>;
+  if (!draft) return <div className="p-4 text-xs text-muted-foreground">載入設定中...</div>;
 
   const status = statusData as
     | {
@@ -87,29 +87,29 @@ export default function AutoTradePanel() {
       {
         onSuccess: (res) => {
           setDraft(res as Cfg);
-          toast.success(`Auto-trade ${(res as Cfg).enabled ? "ENABLED" : "saved"}`);
+          toast.success(`自動交易已${(res as Cfg).enabled ? "啟用" : "儲存"}`);
           invalidate();
         },
-        onError: (err: any) => toast.error(`Save failed: ${err?.data?.error || err?.message}`),
+        onError: (err: any) => toast.error(`儲存失敗：${err?.data?.error || err?.message}`),
       },
     );
   };
 
   const kill = () => {
-    if (!confirm("Kill the auto-trade engine for 24h? Existing positions will NOT be closed automatically.")) return;
+    if (!confirm("停止自動交易引擎 24 小時？已開倉的部位不會自動平掉。")) return;
     killMut.mutate(undefined, {
-      onSuccess: () => { toast.success("Engine killed"); invalidate(); setDraft({ ...draft, enabled: false }); },
-      onError: (err: any) => toast.error(`Kill failed: ${err?.data?.error || err?.message}`),
+      onSuccess: () => { toast.success("引擎已停止"); invalidate(); setDraft({ ...draft, enabled: false }); },
+      onError: (err: any) => toast.error(`停止失敗：${err?.data?.error || err?.message}`),
     });
   };
 
   const runNow = () => {
     runNowMut.mutate(undefined, {
       onSuccess: (res: any) => {
-        toast.success(`Cycle done: ${res.perInstrument.length} instruments`);
+        toast.success(`本輪完成：${res.perInstrument.length} 個交易對`);
         invalidate();
       },
-      onError: (err: any) => toast.error(`Run failed: ${err?.data?.error || err?.message}`),
+      onError: (err: any) => toast.error(`執行失敗：${err?.data?.error || err?.message}`),
     });
   };
 
@@ -127,46 +127,46 @@ export default function AutoTradePanel() {
               killed ? "bg-[#ff4d4d]" : enabled ? "bg-[#00e59b] animate-pulse" : "bg-muted-foreground",
             )} />
             <span className="text-sm font-bold tracking-wide">
-              {killed ? "KILLED" : enabled ? "AUTO-TRADING LIVE" : "DISABLED"}
+              {killed ? "已停止" : enabled ? "自動交易執行中" : "已停用"}
             </span>
           </div>
           <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={kill} disabled={killMut.isPending}>
-            EMERGENCY KILL (24h)
+            緊急停止 (24h)
           </Button>
         </div>
         {status?.message && <div className="text-[11px] text-amber-400 mb-2">{status.message}</div>}
         <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
-          <div><span className="text-muted-foreground">Equity:</span> <span className="text-foreground">${status?.currentEquityUsdt?.toFixed(2) ?? "—"}</span></div>
-          <div><span className="text-muted-foreground">Open:</span> <span className="text-foreground">{status?.openPositionCount ?? 0}</span></div>
+          <div><span className="text-muted-foreground">權益:</span> <span className="text-foreground">${status?.currentEquityUsdt?.toFixed(2) ?? "—"}</span></div>
+          <div><span className="text-muted-foreground">持倉數:</span> <span className="text-foreground">{status?.openPositionCount ?? 0}</span></div>
           <div>
-            <span className="text-muted-foreground">24h PnL:</span>{" "}
+            <span className="text-muted-foreground">24h 盈虧:</span>{" "}
             <span className={cn((status?.dailyRealizedPnlUsdt ?? 0) >= 0 ? "text-[#00e59b]" : "text-[#ff4d4d]")}>
               {(status?.dailyRealizedPnlUsdt ?? 0).toFixed(2)} USDT
             </span>
           </div>
-          <div><span className="text-muted-foreground">Recent:</span> <span className="text-foreground">{status?.recentExecutionCount ?? 0}</span></div>
+          <div><span className="text-muted-foreground">近期下單:</span> <span className="text-foreground">{status?.recentExecutionCount ?? 0}</span></div>
           <div className="col-span-2">
-            <span className="text-muted-foreground">Last cycle:</span>{" "}
-            <span className="text-foreground">{status?.lastCycleAt ? format(new Date(status.lastCycleAt), "MM-dd HH:mm:ss") : "never"}</span>
+            <span className="text-muted-foreground">上次執行:</span>{" "}
+            <span className="text-foreground">{status?.lastCycleAt ? format(new Date(status.lastCycleAt), "MM-dd HH:mm:ss") : "尚未執行"}</span>
           </div>
           <div className="col-span-2">
-            <span className="text-muted-foreground">Next cycle:</span>{" "}
+            <span className="text-muted-foreground">下次執行:</span>{" "}
             <span className="text-foreground">{status?.nextCycleAt ? format(new Date(status.nextCycleAt), "MM-dd HH:mm:ss") : "—"}</span>
           </div>
         </div>
         <Button size="sm" variant="outline" className="mt-3 h-7 text-xs w-full" onClick={runNow} disabled={runNowMut.isPending}>
-          {runNowMut.isPending ? "Running cycle..." : "Run cycle now (respects guardrails)"}
+          {runNowMut.isPending ? "執行中..." : "立即執行一輪（仍受風控限制）"}
         </Button>
       </div>
 
       {/* Config form */}
       <div className="px-4 py-3 space-y-3">
-        <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Configuration</div>
+        <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">設定</div>
 
         <div className="flex items-center justify-between border border-border rounded-md p-2 bg-background/40">
           <div>
-            <div className="text-xs font-semibold">Enable auto-trade</div>
-            <div className="text-[10px] text-muted-foreground">Hourly cycle at HH:01 — REAL ORDERS</div>
+            <div className="text-xs font-semibold">啟用自動交易</div>
+            <div className="text-[10px] text-muted-foreground">每小時 HH:01 觸發 — 真實下單</div>
           </div>
           <button
             type="button"
@@ -184,24 +184,24 @@ export default function AutoTradePanel() {
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <NumField label="Margin % per trade" value={draft.maxMarginPctPerTrade} step={0.5}
+          <NumField label="每筆保證金 %" value={draft.maxMarginPctPerTrade} step={0.5}
             onChange={(v) => setDraft({ ...draft, maxMarginPctPerTrade: v })} />
-          <NumField label="Daily loss kill %" value={draft.maxDailyLossPct} step={1}
+          <NumField label="日虧損停止 %" value={draft.maxDailyLossPct} step={1}
             onChange={(v) => setDraft({ ...draft, maxDailyLossPct: v })} />
-          <NumField label="Max concurrent" value={draft.maxConcurrentPositions} step={1}
+          <NumField label="最多同時持倉" value={draft.maxConcurrentPositions} step={1}
             onChange={(v) => setDraft({ ...draft, maxConcurrentPositions: v })} />
-          <NumField label="Max leverage" value={draft.maxLeverage} step={1}
+          <NumField label="最大槓桿" value={draft.maxLeverage} step={1}
             onChange={(v) => setDraft({ ...draft, maxLeverage: v })} />
-          <NumField label="Min consensus (of 4)" value={draft.minConsensusCount} step={1}
+          <NumField label="最少共識數 (共 4)" value={draft.minConsensusCount} step={1}
             onChange={(v) => setDraft({ ...draft, minConsensusCount: v })} />
-          <NumField label="Min avg confidence" value={draft.minAvgConfidence} step={1}
+          <NumField label="最低平均信心" value={draft.minAvgConfidence} step={1}
             onChange={(v) => setDraft({ ...draft, minAvgConfidence: v })} />
-          <NumField label="Cooldown (min)" value={draft.cooldownMinutes} step={5}
+          <NumField label="冷卻時間 (分)" value={draft.cooldownMinutes} step={5}
             onChange={(v) => setDraft({ ...draft, cooldownMinutes: v })} />
         </div>
 
         <div>
-          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Whitelist (perp instIds, comma)</Label>
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">白名單（永續 instId，用逗號分隔）</Label>
           <Input
             className="h-8 text-xs font-mono mt-1"
             value={draft.whitelist.join(",")}
@@ -215,7 +215,7 @@ export default function AutoTradePanel() {
         </div>
 
         <Button onClick={save} disabled={updateMut.isPending} className="w-full h-9 bg-[#00e59b] text-[#003d29] hover:bg-[#00cc8a] font-bold uppercase tracking-wider">
-          {updateMut.isPending ? "Saving..." : draft.enabled ? "Save & enable" : "Save"}
+          {updateMut.isPending ? "儲存中..." : draft.enabled ? "儲存並啟用" : "儲存"}
         </Button>
       </div>
     </div>

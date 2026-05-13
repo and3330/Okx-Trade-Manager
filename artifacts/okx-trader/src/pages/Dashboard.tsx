@@ -43,7 +43,7 @@ export default function Dashboard() {
                 "px-4 py-1 text-xs font-bold uppercase rounded transition-colors tracking-wider",
                 mode === "spot" ? "bg-[#00e59b] text-[#003d29]" : "text-muted-foreground hover:text-foreground",
               )}
-            >Spot</button>
+            >現貨</button>
             <button
               type="button"
               onClick={() => setMode("perp")}
@@ -51,10 +51,10 @@ export default function Dashboard() {
                 "px-4 py-1 text-xs font-bold uppercase rounded transition-colors tracking-wider",
                 mode === "perp" ? "bg-[#00e59b] text-[#003d29]" : "text-muted-foreground hover:text-foreground",
               )}
-            >Perp</button>
+            >合約</button>
           </div>
           <div className="text-sm text-muted-foreground font-medium">
-            {mode === "spot" ? "Spot Terminal" : "USDT-Margined Perpetuals"}
+            {mode === "spot" ? "現貨交易台" : "USDT 本位永續合約"}
           </div>
         </div>
         <AccountOverview />
@@ -108,7 +108,7 @@ export default function Dashboard() {
                     : "text-muted-foreground hover:text-foreground border-b-2 border-transparent",
                 )}
               >
-                {t === "battle" ? "AI Battle" : t === "auto" ? "Auto Trade" : "History"}
+                {t === "battle" ? "AI 對戰" : t === "auto" ? "自動交易" : "歷史紀錄"}
               </button>
             ))}
           </div>

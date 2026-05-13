@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils";
 
 const orderSchema = z.object({
   side: z.enum(["buy", "sell"]),
-  notionalUsd: z.coerce.number().positive("Must be greater than 0"),
+  notionalUsd: z.coerce.number().positive("必須大於 0"),
   stopLossPrice: z.coerce.number().positive().optional().or(z.literal("")),
 });
 
@@ -81,7 +81,7 @@ export default function OrderForm({ instId }: { instId: string }) {
 
     placeOrder.mutate({ data: payload }, {
       onSuccess: (res) => {
-        toast.success(`Order placed successfully: ${res.ordId}`);
+        toast.success(`下單成功：${res.ordId}`);
         form.reset({
           side: pendingValues.side,
           notionalUsd: 0,
@@ -95,8 +95,8 @@ export default function OrderForm({ instId }: { instId: string }) {
         queryClient.invalidateQueries({ queryKey: getGetAccountSummaryQueryKey() });
       },
       onError: (err: any) => {
-        const msg = err?.data?.error || err.message || "Failed to place order";
-        toast.error(`Order failed: ${msg}`);
+        const msg = err?.data?.error || err.message || "下單失敗";
+        toast.error(`下單失敗：${msg}`);
         setConfirmOpen(false);
       }
     });
@@ -110,7 +110,7 @@ export default function OrderForm({ instId }: { instId: string }) {
 
   return (
     <div className="flex flex-col h-full p-4">
-      <h3 className="text-lg font-bold tracking-tight mb-6">Place Order</h3>
+      <h3 className="text-lg font-bold tracking-tight mb-6">下單</h3>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 flex-1 flex flex-col">
@@ -132,7 +132,7 @@ export default function OrderForm({ instId }: { instId: string }) {
                           : "text-muted-foreground hover:text-foreground"
                       )}
                     >
-                      Buy
+                      買入
                     </button>
                     <button
                       type="button"
@@ -144,7 +144,7 @@ export default function OrderForm({ instId }: { instId: string }) {
                           : "text-muted-foreground hover:text-foreground"
                       )}
                     >
-                      Sell
+                      賣出
                     </button>
                   </div>
                 </FormControl>
@@ -158,7 +158,7 @@ export default function OrderForm({ instId }: { instId: string }) {
             name="notionalUsd"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs uppercase text-muted-foreground">Amount (USDT)</FormLabel>
+                <FormLabel className="text-xs uppercase text-muted-foreground">金額 (USDT)</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
@@ -178,12 +178,12 @@ export default function OrderForm({ instId }: { instId: string }) {
             name="stopLossPrice"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs uppercase text-muted-foreground">Stop Loss Price (Optional)</FormLabel>
+                <FormLabel className="text-xs uppercase text-muted-foreground">止損價（選填）</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
                     step="any"
-                    placeholder="None"
+                    placeholder="無"
                     className="font-mono text-lg bg-background border-border h-12" 
                     {...field} 
                     value={field.value ?? ""}
@@ -197,13 +197,13 @@ export default function OrderForm({ instId }: { instId: string }) {
           {/* Quote Preview */}
           <div className="mt-auto bg-muted/20 border border-border rounded-md p-3">
             <div className="flex justify-between items-center text-sm mb-1">
-              <span className="text-muted-foreground">Est. Fill</span>
+              <span className="text-muted-foreground">預估成交</span>
               <span className="font-mono font-medium text-foreground">
                 {estimatedCrypto > 0 ? estimatedCrypto.toFixed(6) : "0.00"} {baseAsset}
               </span>
             </div>
             <div className="flex justify-between items-center text-sm">
-              <span className="text-muted-foreground">Last Price</span>
+              <span className="text-muted-foreground">最新價</span>
               <span className="font-mono text-foreground">
                 {ticker?.last || "---"}
               </span>
@@ -221,7 +221,7 @@ export default function OrderForm({ instId }: { instId: string }) {
             )}
             disabled={placeOrder.isPending}
           >
-            {placeOrder.isPending ? "Placing..." : `${watchSide} ${baseAsset}`}
+            {placeOrder.isPending ? "送出中..." : `${watchSide === "buy" ? "買入" : "賣出"} ${baseAsset}`}
           </Button>
         </form>
       </Form>
@@ -229,13 +229,13 @@ export default function OrderForm({ instId }: { instId: string }) {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Order</AlertDialogTitle>
+            <AlertDialogTitle>確認下單</AlertDialogTitle>
             <AlertDialogDescription className="text-base text-foreground mt-4">
-              Are you sure you want to {pendingValues?.side} {pendingValues?.notionalUsd} USDT worth of {baseAsset}?
+              確定要{pendingValues?.side === "buy" ? "買入" : "賣出"} {pendingValues?.notionalUsd} USDT 的 {baseAsset} 嗎？
               <br/><br/>
-              Estimated fill: ~{estimatedCrypto.toFixed(6)} {baseAsset}
+              預估成交：約 {estimatedCrypto.toFixed(6)} {baseAsset}
               {pendingValues?.stopLossPrice && (
-                <><br/>Stop Loss: {pendingValues.stopLossPrice} USDT</>
+                <><br/>止損: {pendingValues.stopLossPrice} USDT</>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -244,7 +244,7 @@ export default function OrderForm({ instId }: { instId: string }) {
               className="bg-transparent border-border hover:bg-muted text-foreground"
               disabled={placeOrder.isPending}
             >
-              Cancel
+              取消
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmPlace}
@@ -254,7 +254,7 @@ export default function OrderForm({ instId }: { instId: string }) {
                 pendingValues?.side === OrderInputSide.buy ? "bg-[#00e59b] hover:bg-[#00cc8a] text-[#003d29]" : "bg-[#ff4d4d] hover:bg-[#e63939]"
               )}
             >
-              {placeOrder.isPending ? "Placing..." : `Confirm ${pendingValues?.side}`}
+              {placeOrder.isPending ? "送出中..." : `確認${pendingValues?.side === "buy" ? "買入" : "賣出"}`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

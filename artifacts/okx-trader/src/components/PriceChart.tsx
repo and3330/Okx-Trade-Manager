@@ -63,15 +63,15 @@ export default function PriceChart({ instId }: { instId: string }) {
         {ticker && (
           <div className="flex gap-6 text-right hidden md:flex">
             <div className="flex flex-col">
-              <span className="text-xs text-muted-foreground uppercase">24H High</span>
+              <span className="text-xs text-muted-foreground uppercase">24H 高</span>
               <span className="text-sm font-mono text-foreground">{ticker.high24h}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-xs text-muted-foreground uppercase">24H Low</span>
+              <span className="text-xs text-muted-foreground uppercase">24H 低</span>
               <span className="text-sm font-mono text-foreground">{ticker.low24h}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-xs text-muted-foreground uppercase">24H Vol</span>
+              <span className="text-xs text-muted-foreground uppercase">24H 量</span>
               <span className="text-sm font-mono text-foreground">{Math.floor(ticker.vol24h).toLocaleString()}</span>
             </div>
           </div>
@@ -81,7 +81,7 @@ export default function PriceChart({ instId }: { instId: string }) {
       {/* Chart */}
       <div className="flex-1 min-h-[200px]">
         {isLoading ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">Loading chart data...</div>
+          <div className="flex items-center justify-center h-full text-muted-foreground">載入 K 線中...</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>

@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils";
 
 const perpSchema = z.object({
   side: z.enum(["long", "short"]),
-  marginUsdt: z.coerce.number().positive("Must be > 0"),
+  marginUsdt: z.coerce.number().positive("必須大於 0"),
   leverage: z.coerce.number().int().min(1).max(125),
   takeProfitPrice: z.union([z.coerce.number().positive(), z.literal(""), z.undefined()]).optional(),
   stopLossPrice: z.union([z.coerce.number().positive(), z.literal(""), z.undefined()]).optional(),
@@ -103,7 +103,7 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
       },
       {
         onSuccess: (res) => {
-          toast.success(`Position opened: ${res.contracts} contracts @ ${res.markPx}`);
+          toast.success(`已開倉：${res.contracts} 張 @ ${res.markPx}`);
           setConfirmOpen(false);
           queryClient.invalidateQueries({ queryKey: getListPerpPositionsQueryKey() });
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
@@ -112,8 +112,8 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
           queryClient.invalidateQueries({ queryKey: getGetAccountSummaryQueryKey() });
         },
         onError: (err: any) => {
-          const msg = err?.data?.error || err.message || "Failed";
-          toast.error(`Order failed: ${msg}`);
+          const msg = err?.data?.error || err.message || "失敗";
+          toast.error(`下單失敗：${msg}`);
           setConfirmOpen(false);
         },
       },
@@ -123,8 +123,8 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
   return (
     <div className="flex flex-col h-full p-4">
       <div className="flex items-baseline justify-between mb-4">
-        <h3 className="text-lg font-bold tracking-tight">Open Perp</h3>
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{baseCcy} · max {maxLev}x</span>
+        <h3 className="text-lg font-bold tracking-tight">開合約倉</h3>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{baseCcy} · 最高 {maxLev}x</span>
       </div>
 
       <Form {...form}>
@@ -143,7 +143,7 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
                         "flex-1 py-2 text-sm font-bold uppercase rounded transition-colors",
                         field.value === "long" ? "bg-[#00e59b] text-[#003d29]" : "text-muted-foreground hover:text-foreground",
                       )}
-                    >Long</button>
+                    >做多</button>
                     <button
                       type="button"
                       onClick={() => field.onChange("short")}
@@ -151,7 +151,7 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
                         "flex-1 py-2 text-sm font-bold uppercase rounded transition-colors",
                         field.value === "short" ? "bg-[#ff4d4d] text-white" : "text-muted-foreground hover:text-foreground",
                       )}
-                    >Short</button>
+                    >做空</button>
                   </div>
                 </FormControl>
               </FormItem>
@@ -164,7 +164,7 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
               name="marginUsdt"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs uppercase text-muted-foreground">Margin (USDT)</FormLabel>
+                  <FormLabel className="text-xs uppercase text-muted-foreground">保證金 (USDT)</FormLabel>
                   <FormControl>
                     <Input type="number" step="any" className="font-mono text-base bg-background border-border h-11" {...field} />
                   </FormControl>
@@ -177,7 +177,7 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
               name="leverage"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs uppercase text-muted-foreground">Leverage (x)</FormLabel>
+                  <FormLabel className="text-xs uppercase text-muted-foreground">槓桿倍數 (x)</FormLabel>
                   <FormControl>
                     <Input type="number" step="1" min={1} max={maxLev} className="font-mono text-base bg-background border-border h-11" {...field} />
                   </FormControl>
@@ -192,9 +192,9 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
             name="takeProfitPrice"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs uppercase text-muted-foreground">Take Profit (Optional)</FormLabel>
+                <FormLabel className="text-xs uppercase text-muted-foreground">止盈價（選填）</FormLabel>
                 <FormControl>
-                  <Input type="number" step="any" placeholder="None" className="font-mono text-base bg-background border-border h-11" {...field} value={field.value ?? ""} />
+                  <Input type="number" step="any" placeholder="無" className="font-mono text-base bg-background border-border h-11" {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -206,9 +206,9 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
             name="stopLossPrice"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs uppercase text-muted-foreground">Stop Loss (Optional)</FormLabel>
+                <FormLabel className="text-xs uppercase text-muted-foreground">止損價（選填）</FormLabel>
                 <FormControl>
-                  <Input type="number" step="any" placeholder="None" className="font-mono text-base bg-background border-border h-11" {...field} value={field.value ?? ""} />
+                  <Input type="number" step="any" placeholder="無" className="font-mono text-base bg-background border-border h-11" {...field} value={field.value ?? ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -216,9 +216,9 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
           />
 
           <div className="mt-auto bg-muted/20 border border-border rounded-md p-3 text-sm space-y-1">
-            <div className="flex justify-between"><span className="text-muted-foreground">Notional</span><span className="font-mono">${notional.toFixed(2)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Est. Size</span><span className="font-mono">{contracts} ct · {baseQty.toFixed(4)} {baseCcy}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Mark</span><span className="font-mono">{last || "---"}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">名目價值</span><span className="font-mono">${notional.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">預估張數</span><span className="font-mono">{contracts} 張 · {baseQty.toFixed(4)} {baseCcy}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">標記價</span><span className="font-mono">{last || "---"}</span></div>
           </div>
 
           <Button
@@ -230,7 +230,7 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
             )}
             disabled={placePerp.isPending}
           >
-            {placePerp.isPending ? "Placing..." : `${watchSide === "long" ? "Long" : "Short"} ${baseCcy} ${watchLev}x`}
+            {placePerp.isPending ? "送出中..." : `${watchSide === "long" ? "做多" : "做空"} ${baseCcy} ${watchLev}x`}
           </Button>
         </form>
       </Form>
@@ -238,18 +238,18 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Perp Order</AlertDialogTitle>
+            <AlertDialogTitle>確認合約下單</AlertDialogTitle>
             <AlertDialogDescription className="text-foreground mt-2 space-y-1">
-              <div>{pending?.side === "long" ? "Long" : "Short"} <b>{baseCcy}</b> at <b>{pending?.leverage}x</b></div>
-              <div>Margin: <b>{pending?.marginUsdt} USDT</b> · Notional: <b>${notional.toFixed(2)}</b></div>
-              <div>Est. fill: <b>{contracts} contracts</b> (~{baseQty.toFixed(4)} {baseCcy}) @ ~{last}</div>
-              {pending?.takeProfitPrice ? <div>Take Profit: <b>{pending.takeProfitPrice}</b></div> : null}
-              {pending?.stopLossPrice ? <div>Stop Loss: <b>{pending.stopLossPrice}</b></div> : null}
-              <div className="text-xs text-muted-foreground pt-2">Real money. {pending?.leverage}x leverage means your margin is wiped if price moves ~{(100 / (Number(pending?.leverage) || 1)).toFixed(2)}% against you.</div>
+              <div>{pending?.side === "long" ? "做多" : "做空"} <b>{baseCcy}</b>，槓桿 <b>{pending?.leverage}x</b></div>
+              <div>保證金: <b>{pending?.marginUsdt} USDT</b> · 名目價值: <b>${notional.toFixed(2)}</b></div>
+              <div>預估成交: <b>{contracts} 張</b>（約 {baseQty.toFixed(4)} {baseCcy}）@ ~{last}</div>
+              {pending?.takeProfitPrice ? <div>止盈: <b>{pending.takeProfitPrice}</b></div> : null}
+              {pending?.stopLossPrice ? <div>止損: <b>{pending.stopLossPrice}</b></div> : null}
+              <div className="text-xs text-muted-foreground pt-2">真實資金。{pending?.leverage}x 槓桿代表價格反向走 ~{(100 / (Number(pending?.leverage) || 1)).toFixed(2)}% 就會虧光保證金。</div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={placePerp.isPending} className="bg-transparent border-border hover:bg-muted text-foreground">Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={placePerp.isPending} className="bg-transparent border-border hover:bg-muted text-foreground">取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirm}
               disabled={placePerp.isPending}
@@ -258,7 +258,7 @@ export default function PerpOrderForm({ instId }: { instId: string }) {
                 pending?.side === "long" ? "bg-[#00e59b] hover:bg-[#00cc8a] text-[#003d29]" : "bg-[#ff4d4d] hover:bg-[#e63939]",
               )}
             >
-              {placePerp.isPending ? "Placing..." : `Confirm ${pending?.side === "long" ? "Long" : "Short"}`}
+              {placePerp.isPending ? "送出中..." : `確認${pending?.side === "long" ? "做多" : "做空"}`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
