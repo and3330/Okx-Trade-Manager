@@ -5,6 +5,8 @@ import {
   runResearchPipeline,
   runMarketScanner,
   computeConsensus,
+  scoreSizeMultiplier,
+  scoreMaxLeverage,
   type AiRecommendation,
   type ProviderWeights,
   PROVIDERS,
@@ -553,11 +555,45 @@ async function processInstrument(args: {
   }
 
   const side = consensus.action as "long" | "short";
+
+  // ── Strategy hard gate (Minervini + Qullamaggie + Schwartz, crypto-adjusted) ──
+  // Even if AI consensus says "long", we refuse to trade if any 禁止 rule fires:
+  //   price < 4H EMA200, funding > 0.03%, RSI > 85, score ≤ 2, missing ATR.
+  // This is the safety belt — AI may misread; deterministic checks are absolute.
+  const checklist = side === "long" ? pipeline.strategyLong : pipeline.strategyShort;
+  if (!checklist) {
+    return { instId, action: "skipped", reason: "strategy_checklist_unavailable", executionId: null };
+  }
+  if (checklist.hardBlocks.length > 0) {
+    return {
+      instId,
+      action: "skipped",
+      reason: `strategy_hard_block (score=${checklist.score}/7, ${checklist.hardBlocks.join("; ")})`,
+      executionId: null,
+    };
+  }
+  if (checklist.score <= 2) {
+    return {
+      instId,
+      action: "skipped",
+      reason: `strategy_score_too_low ${checklist.score}/7 (need ≥ 3)`,
+      executionId: null,
+    };
+  }
+
   // Dynamic position sizing (T001): scale margin% by avg confidence, capped at user setting.
   const dynamicPct = confidenceMarginPct(consensus.avgConfidence, cfg.maxMarginPctPerTrade);
   const dynamicMaxMargin = Math.max(10, Math.min((balance.totalEquityUsd * dynamicPct) / 100, heldUsdt));
-  const margin = Math.max(10, Math.min(consensus.medianMarginUsdt ?? dynamicMaxMargin, dynamicMaxMargin));
-  const leverage = Math.max(1, Math.min(consensus.medianLeverage ?? cfg.maxLeverage, cfg.maxLeverage));
+  // Strategy score scales the margin too: 3-4→30% / 5→50% / 6→70% / 7→100%.
+  // Final cap = min(confidence-based cap, score-based cap, AI-suggested median).
+  const scoreMult = scoreSizeMultiplier(checklist.score);
+  const scoreMaxMargin = Math.max(10, dynamicMaxMargin * scoreMult);
+  const effectiveMaxMargin = Math.min(dynamicMaxMargin, scoreMaxMargin);
+  const margin = Math.max(10, Math.min(consensus.medianMarginUsdt ?? effectiveMaxMargin, effectiveMaxMargin));
+  // Leverage capped by both user setting and strategy-score table (7→10x / 5-6→5x / 3-4→3x).
+  const scoreLevCap = scoreMaxLeverage(checklist.score);
+  const effectiveMaxLev = Math.min(cfg.maxLeverage, scoreLevCap);
+  const leverage = Math.max(1, Math.min(consensus.medianLeverage ?? effectiveMaxLev, effectiveMaxLev));
 
   // Force SL via ATR if not provided
   let stopLossPrice = consensus.medianStopLossPrice;

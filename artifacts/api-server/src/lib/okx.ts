@@ -1320,6 +1320,21 @@ export function summarizeIndicators(byBar: MultiTimeframeIndicators): string {
   return lines.join("\n");
 }
 
+// Pull a single EMA(period) value at a given bar — used for trend / cross checks.
+export async function fetchEmaCustom(
+  instId: string,
+  bar: IndicatorBar,
+  period: number,
+): Promise<number | null> {
+  try {
+    const r = await fetchIndicators(instId, bar, [{ code: "EMA", paramList: [period] }]);
+    const v = r["EMA"]?.values[String(period)];
+    return v != null && Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 // Pull a single ATR(14) value at a given bar — used for SL distance defaults.
 export async function fetchAtr(
   instId: string,
