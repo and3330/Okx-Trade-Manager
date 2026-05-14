@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Pbif12b1oYlLajRLjsLYk"
+uri = "file://attached_assets/current_strategy_backtest.pine.txt"
+type = "text"
+title = "OKX Engine - 目前策略 Pine Script (貼到 TradingView)"

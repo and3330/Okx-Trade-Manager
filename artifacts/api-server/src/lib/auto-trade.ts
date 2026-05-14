@@ -11,6 +11,7 @@ import {
   liquidationBufferLeverageCap,
   decideByRules,
   synthesizeConsensusFromRules,
+  atrSlMultiplier,
   type AiRecommendation,
   type ProviderWeights,
   type Consensus,
@@ -640,25 +641,29 @@ async function processInstrument(args: {
   //   1. user setting (cfg.maxLeverage)
   //   2. strategy score table (7→10x / 5-6→5x / 3-4→3x)
   //   3. volatility band: ATR% high → low lev / ATR% low → high lev
-  //   4. liquidation buffer: 2.5×ATR SL must leave ≥ 40% room before liq price
+  //   4. liquidation buffer: tiered-ATR SL must leave ≥ 40% room before liq price
+  // ATR multiplier is now coin-tier-aware (BTC/ETH/BNB=2.2, meme/new=3.5, default=2.8)
+  // per Pine V2 backtest insight that uniform multipliers either get wicked (DOGE etc.)
+  // or eat profits (BTC/ETH).
+  const atrMult = atrSlMultiplier(instId);
   const scoreLevCap = scoreMaxLeverage(checklist.score);
   const atrPctForVol = pipeline.atr1H != null && pipeline.lastPrice > 0
     ? (pipeline.atr1H / pipeline.lastPrice) * 100
     : 0;
   const volLevCap = volAdjustedLeverageCap(atrPctForVol);
   const liqLevCap = pipeline.atr1H != null
-    ? liquidationBufferLeverageCap(pipeline.atr1H, pipeline.lastPrice)
+    ? liquidationBufferLeverageCap(pipeline.atr1H, pipeline.lastPrice, atrMult)
     : 1;
   const effectiveMaxLev = Math.min(cfg.maxLeverage, scoreLevCap, volLevCap, liqLevCap);
   const leverage = Math.max(1, Math.min(consensus.medianLeverage ?? effectiveMaxLev, effectiveMaxLev));
 
-  // Force SL via ATR if not provided. Use 2.5× per second strategy doc (anti-wick).
-  // Reuse pipeline.atr1H (already fetched in Stage 0) to avoid a second API call that could fail.
+  // Force SL via tiered ATR multiplier if not provided. Reuse pipeline.atr1H
+  // (already fetched in Stage 0) to avoid a second API call that could fail.
   let stopLossPrice = consensus.medianStopLossPrice;
   if (stopLossPrice == null) {
     const atr = pipeline.atr1H ?? (await fetchAtr(instId, "1H"));
     if (atr != null && atr > 0 && pipeline.lastPrice > 0) {
-      stopLossPrice = side === "long" ? pipeline.lastPrice - atr * 2.5 : pipeline.lastPrice + atr * 2.5;
+      stopLossPrice = side === "long" ? pipeline.lastPrice - atr * atrMult : pipeline.lastPrice + atr * atrMult;
     }
   }
   // Sanity check SL: must exist, be positive, and on the correct side of entry with non-trivial distance (>=0.1%).

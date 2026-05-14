@@ -530,11 +530,15 @@ ${strategyText}
 - 7/7 → 最高 10x  /  5-6/7 → 最高 5x  /  3-4/7 → 最高 3x
 
 ══════════════════════════════════════
-【止損止盈規則 — ATR 2.5 倍動態止損】
+【止損止盈規則 — 幣種分級 ATR 動態止損】
 ══════════════════════════════════════
-- 止損 = 進場價 ± (2.5 × 1H ATR)  (做多 -, 做空 +) — 採用較大倍數防插針
-- 止盈 = 進場價 ± (5 × 1H ATR) → 盈虧比 1:2 (最低標準)
-- 高信心可放寬到 7.5 × ATR → 1:3
+- ATR 倍數依幣種分級 (回測驗證最佳):
+  · 藍籌 (BTC/ETH/BNB) → 2.2× ATR (波動規律,過寬會吃利潤)
+  · 中流 (SOL/XRP/AVAX/LINK 等) → 2.8× ATR
+  · 高波動/迷因 (DOGE/HYPE/SUI/PEPE 等) → 3.5× ATR (插針兇,需寬止損)
+- 止損 = 進場價 ± (該幣 ATR 倍數 × 1H ATR)
+- 止盈 = 止損距離 × 2 (盈虧比 1:2 最低標準)
+- 高信心可放到 1:3
 - **絕對禁止盈虧比 < 1:1.5**
 
 【強平緩衝規則】
@@ -776,13 +780,28 @@ export function volAdjustedLeverageCap(atrPct: number): number {
   return 20;
 }
 
-// Liquidation-buffer leverage cap: ensure 2.5×ATR stop-loss distance leaves at
+// Coin-tier ATR multiplier for stop-loss distance (per backtested Pine V2):
+//   stable majors (BTC/ETH/BNB) → 2.2× (regular volatility, tight stops fine)
+//   meme/new coins (DOGE/HYPE/SUI/PEPE/WIF/BONK/SHIB/FLOKI) → 3.5× (wick-prone, need wider stops)
+//   default mid-caps → 2.8×
+// Anti-wick principle: wider multipliers for instruments that historically blow through tight stops.
+const STABLE_MAJORS = new Set(["BTC", "ETH", "BNB"]);
+const HYPER_VOLATILE = new Set(["DOGE", "HYPE", "SUI", "PEPE", "WIF", "BONK", "SHIB", "FLOKI"]);
+export function atrSlMultiplier(instId: string): number {
+  const base = (instId.split("-")[0] ?? "").toUpperCase();
+  if (STABLE_MAJORS.has(base)) return 2.2;
+  if (HYPER_VOLATILE.has(base)) return 3.5;
+  return 2.8;
+}
+
+// Liquidation-buffer leverage cap: ensure (mult × ATR) stop-loss distance leaves at
 // least 40% buffer to estimated isolated-margin liquidation price.
-// Approx: liq_distance ≈ price / leverage. Require 2.5×ATR < 0.6 × (price/leverage).
-// → leverage < 0.6 × price / (2.5 × ATR) = 0.24 / (ATR/price)
-export function liquidationBufferLeverageCap(atr: number, price: number): number {
+// Approx: liq_distance ≈ price / leverage. Require mult×ATR < 0.6 × (price/leverage).
+// → leverage < 0.6 × price / (mult × ATR)
+export function liquidationBufferLeverageCap(atr: number, price: number, atrMult: number): number {
   if (!Number.isFinite(atr) || atr <= 0 || !Number.isFinite(price) || price <= 0) return 1;
-  const cap = Math.floor((0.6 * price) / (2.5 * atr));
+  if (!Number.isFinite(atrMult) || atrMult <= 0) return 1;
+  const cap = Math.floor((0.6 * price) / (atrMult * atr));
   return Math.max(1, cap);
 }
 

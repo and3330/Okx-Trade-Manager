@@ -1,0 +1,199 @@
+//@version=5
+// =====================================================================
+// OKX 自動交易引擎 — 目前策略回測版 (對應 Replit 線上引擎邏輯)
+// =====================================================================
+// 包含：
+//   1. 4H + 1H 雙時間框架趨勢過濾
+//   2. 7 項共振 checklist (滿分 7)
+//   3. 硬性禁止：4H 趨勢反向、RSI > 85、方向背離
+//   4. 幣種分級 ATR 倍數 (2.2 / 2.8 / 3.5)
+//   5. 兩階段跟隨止損：profitR>=1 移保本，profitR>=2 鎖 +1R
+//   6. 50% 部分止盈 @ 1.5R，剩餘 50% 繼續 trailing
+//
+// 注意：Pine Script 無法取得資金費率與 OI，所以以下兩條硬禁止規則
+// 在回測版本中省略：
+//   - 資金費率 > 0.03% 禁開多 / < -0.03% 禁開空
+//   - 主動買賣比與 OI 變化
+// 真實線上引擎這兩條都有強制執行。
+// =====================================================================
+
+strategy("OKX Engine V3 (Live Strategy Replica)",
+     overlay=true,
+     initial_capital=1000,
+     default_qty_type=strategy.percent_of_equity,
+     default_qty_value=10,
+     pyramiding=0,
+     commission_type=strategy.commission.percent,
+     commission_value=0.05,
+     calc_on_every_tick=false,
+     process_orders_on_close=true)
+
+// ---------------------------------------------------------------------
+// 幣種自動分級 → ATR 倍數
+// ---------------------------------------------------------------------
+isStable = str.contains(syminfo.ticker, "BTC") or str.contains(syminfo.ticker, "ETH") or str.contains(syminfo.ticker, "BNB")
+isHyper  = str.contains(syminfo.ticker, "DOGE") or str.contains(syminfo.ticker, "HYPE") or str.contains(syminfo.ticker, "SUI")  or str.contains(syminfo.ticker, "PEPE") or str.contains(syminfo.ticker, "WIF")  or str.contains(syminfo.ticker, "BONK") or str.contains(syminfo.ticker, "SHIB") or str.contains(syminfo.ticker, "FLOKI")
+atrMult  = isStable ? 2.2 : (isHyper ? 3.5 : 2.8)
+
+// ---------------------------------------------------------------------
+// 用戶可調參數
+// ---------------------------------------------------------------------
+minScore         = input.int(5,    "最低共振分數 (0-7)",     minval=3, maxval=7)
+useCloseConfirm  = input.bool(true, "止損用收盤價確認 (防插針)")
+tp1AtR           = input.float(1.5, "TP1 在幾倍 R 平 50%",   minval=1.0, maxval=3.0, step=0.1)
+showDebug        = input.bool(false, "顯示 checklist 分數標籤")
+
+// ---------------------------------------------------------------------
+// 1H 指標 (當前時框假設為 1H)
+// ---------------------------------------------------------------------
+ema10_1h  = ta.ema(close, 10)
+ema20_1h  = ta.ema(close, 20)
+ema50_1h  = ta.ema(close, 50)
+ema200_1h = ta.ema(close, 200)
+rsi_1h    = ta.rsi(close, 14)
+atr_1h    = ta.atr(14)
+[macdLine, signalLine, _hist] = ta.macd(close, 12, 26, 9)
+volMa20   = ta.sma(volume, 20)
+
+// ---------------------------------------------------------------------
+// 4H 指標 (高時框趨勢確認)
+// ---------------------------------------------------------------------
+ema50_4h  = request.security(syminfo.tickerid, "240", ta.ema(close, 50),  lookahead=barmerge.lookahead_off)
+ema200_4h = request.security(syminfo.tickerid, "240", ta.ema(close, 200), lookahead=barmerge.lookahead_off)
+close_4h  = request.security(syminfo.tickerid, "240", close,              lookahead=barmerge.lookahead_off)
+
+// ---------------------------------------------------------------------
+// 15m 指標 (低時框進場時機)
+// ---------------------------------------------------------------------
+ema10_15m = request.security(syminfo.tickerid, "15", ta.ema(close, 10), lookahead=barmerge.lookahead_off)
+ema20_15m = request.security(syminfo.tickerid, "15", ta.ema(close, 20), lookahead=barmerge.lookahead_off)
+
+// ---------------------------------------------------------------------
+// 7 項共振 checklist (做多)
+// ---------------------------------------------------------------------
+chk1L = close_4h > ema200_4h                   // 4H 在 EMA200 之上
+chk2L = ema50_4h > ema200_4h                   // 4H EMA50 > EMA200 (多頭排列)
+chk3L = close > ema200_1h                      // 1H 在 EMA200 之上
+chk4L = ema10_1h > ema20_1h and ema20_1h > ema50_1h  // 1H 完整多頭排列
+chk5L = macdLine > signalLine                  // MACD 金叉
+chk6L = volume > volMa20 * 1.2                 // 量能放大 1.2 倍
+chk7L = ema10_15m > ema20_15m                  // 15m 進場時機
+
+scoreLong  = (chk1L?1:0) + (chk2L?1:0) + (chk3L?1:0) + (chk4L?1:0) + (chk5L?1:0) + (chk6L?1:0) + (chk7L?1:0)
+
+// ---------------------------------------------------------------------
+// 7 項共振 checklist (做空)
+// ---------------------------------------------------------------------
+chk1S = close_4h < ema200_4h
+chk2S = ema50_4h < ema200_4h
+chk3S = close < ema200_1h
+chk4S = ema10_1h < ema20_1h and ema20_1h < ema50_1h
+chk5S = macdLine < signalLine
+chk6S = volume > volMa20 * 1.2
+chk7S = ema10_15m < ema20_15m
+
+scoreShort = (chk1S?1:0) + (chk2S?1:0) + (chk3S?1:0) + (chk4S?1:0) + (chk5S?1:0) + (chk6S?1:0) + (chk7S?1:0)
+
+// ---------------------------------------------------------------------
+// 硬性禁止規則 (任一觸發就不能開該方向)
+// ---------------------------------------------------------------------
+hardBlockLong  = close_4h < ema200_4h or rsi_1h > 85 or (chk3L == false and chk4L)  // 方向背離: 1H 排列多但價在 EMA200 下
+hardBlockShort = close_4h > ema200_4h or rsi_1h < 15 or (chk3S == false and chk4S)
+
+// ---------------------------------------------------------------------
+// 進場條件
+// ---------------------------------------------------------------------
+canLong  = scoreLong  >= minScore and not hardBlockLong  and strategy.position_size == 0
+canShort = scoreShort >= minScore and not hardBlockShort and strategy.position_size == 0
+
+if (canLong)
+    strategy.entry("Long", strategy.long)
+
+if (canShort)
+    strategy.entry("Short", strategy.short)
+
+// ---------------------------------------------------------------------
+// 止損 / 止盈管理 (兩階段 trailing + 50% TP1)
+// ---------------------------------------------------------------------
+var float entryPx     = na
+var float initSl      = na
+var float rDist       = na
+var int   trailStage  = 0   // 0=initial, 1=breakeven, 2=+1R lock
+var bool  tp1Done     = false
+
+// 開倉當下計算初始 SL 與 R
+if (strategy.position_size != 0 and strategy.position_size[1] == 0)
+    entryPx    := strategy.position_avg_price
+    initSl     := strategy.position_size > 0 ? entryPx - atr_1h * atrMult : entryPx + atr_1h * atrMult
+    rDist      := math.abs(entryPx - initSl)
+    trailStage := 0
+    tp1Done    := false
+
+// 部位活動中
+inLong  = strategy.position_size > 0
+inShort = strategy.position_size < 0
+
+// 計算當前 profitR
+profitR = inLong  ? (close - entryPx) / rDist : inShort ? (entryPx - close) / rDist : 0.0
+
+// 兩階段 trailing
+var float curSl = na
+if (inLong or inShort)
+    if (na(curSl))
+        curSl := initSl
+
+    // Stage 2: profitR >= 2 → 鎖 +1R
+    if (trailStage < 2 and profitR >= 2)
+        curSl      := inLong ? entryPx + rDist : entryPx - rDist
+        trailStage := 2
+    // Stage 1: profitR >= 1 → 移保本
+    else if (trailStage < 1 and profitR >= 1)
+        curSl      := entryPx
+        trailStage := 1
+
+    // TP1: 50% 平在 1.5R
+    if (not tp1Done and profitR >= tp1AtR)
+        if (inLong)
+            strategy.close("Long", qty_percent=50, comment="TP1")
+        if (inShort)
+            strategy.close("Short", qty_percent=50, comment="TP1")
+        tp1Done := true
+
+    // 止損執行 (收盤價確認 防插針)
+    triggerPrice = useCloseConfirm ? close : (inLong ? low : high)
+    if (inLong  and triggerPrice < curSl)
+        strategy.close("Long",  comment="SL")
+    if (inShort and triggerPrice > curSl)
+        strategy.close("Short", comment="SL")
+
+// 平倉後重置
+if (strategy.position_size == 0)
+    curSl      := na
+    entryPx    := na
+    initSl     := na
+    rDist      := na
+    trailStage := 0
+    tp1Done    := false
+
+// ---------------------------------------------------------------------
+// 視覺化
+// ---------------------------------------------------------------------
+plot(ema200_1h, "EMA200 1H", color=color.new(color.orange, 0), linewidth=2)
+plot(ema50_1h,  "EMA50  1H", color=color.new(color.blue,   30))
+plot(ema20_1h,  "EMA20  1H", color=color.new(color.aqua,   50))
+plot(ema10_1h,  "EMA10  1H", color=color.new(color.lime,   50))
+plot(strategy.position_size != 0 ? curSl : na, "Active SL",
+     color=color.red, style=plot.style_linebr, linewidth=2)
+
+// Debug 標籤
+if (showDebug and barstate.islast)
+    label.new(bar_index, high,
+       text = "L:" + str.tostring(scoreLong) + "/7  S:" + str.tostring(scoreShort) + "/7\nATR×: " + str.tostring(atrMult),
+       style = label.style_label_down,
+       color = color.new(color.gray, 20),
+       textcolor = color.white,
+       size  = size.small)
+
+// 進出場標記
+plotshape(canLong,  title="Long Entry",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), size=size.small)
+plotshape(canShort, title="Short Entry", style=shape.triangledown, location=location.abovebar, color=color.new(color.red,   0), size=size.small)
