@@ -19,6 +19,8 @@ export interface AutoTradeConfig {
   minConsensusCount: number;
   minAvgConfidence: number;
   cooldownMinutes: number;
+  rulesOnlyMode: boolean;
+  cycleIntervalMinutes: number;
   /** @nullable */
   killUntil?: string | null;
   updatedAt: string;

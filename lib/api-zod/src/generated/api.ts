@@ -448,6 +448,8 @@ export const GetAutoTradeConfigResponse = zod.object({
   minConsensusCount: zod.number(),
   minAvgConfidence: zod.number(),
   cooldownMinutes: zod.number(),
+  rulesOnlyMode: zod.boolean(),
+  cycleIntervalMinutes: zod.number(),
   killUntil: zod.string().nullish(),
   updatedAt: zod.string(),
 });
@@ -468,6 +470,8 @@ export const UpdateAutoTradeConfigBody = zod.object({
   minConsensusCount: zod.number().nullish(),
   minAvgConfidence: zod.number().nullish(),
   cooldownMinutes: zod.number().nullish(),
+  rulesOnlyMode: zod.boolean().nullish(),
+  cycleIntervalMinutes: zod.number().nullish(),
 });
 
 export const UpdateAutoTradeConfigResponse = zod.object({
@@ -483,6 +487,8 @@ export const UpdateAutoTradeConfigResponse = zod.object({
   minConsensusCount: zod.number(),
   minAvgConfidence: zod.number(),
   cooldownMinutes: zod.number(),
+  rulesOnlyMode: zod.boolean(),
+  cycleIntervalMinutes: zod.number(),
   killUntil: zod.string().nullish(),
   updatedAt: zod.string(),
 });

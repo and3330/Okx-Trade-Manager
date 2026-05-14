@@ -31,4 +31,8 @@ export interface AutoTradeConfigInput {
   minAvgConfidence?: number | null;
   /** @nullable */
   cooldownMinutes?: number | null;
+  /** @nullable */
+  rulesOnlyMode?: boolean | null;
+  /** @nullable */
+  cycleIntervalMinutes?: number | null;
 }

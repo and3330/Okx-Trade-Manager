@@ -426,6 +426,8 @@ export interface AutoTradeConfig {
   minConsensusCount: number;
   minAvgConfidence: number;
   cooldownMinutes: number;
+  rulesOnlyMode: boolean;
+  cycleIntervalMinutes: number;
   /** @nullable */
   killUntil?: string | null;
   updatedAt: string;
@@ -456,6 +458,10 @@ export interface AutoTradeConfigInput {
   minAvgConfidence?: number | null;
   /** @nullable */
   cooldownMinutes?: number | null;
+  /** @nullable */
+  rulesOnlyMode?: boolean | null;
+  /** @nullable */
+  cycleIntervalMinutes?: number | null;
 }
 
 export interface AutoTradeStatus {

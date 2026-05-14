@@ -28,6 +28,8 @@ export const autoTradeConfigTable = pgTable("auto_trade_config", {
   minConsensusCount: integer("min_consensus_count").notNull().default(3),
   minAvgConfidence: integer("min_avg_confidence").notNull().default(7),
   cooldownMinutes: integer("cooldown_minutes").notNull().default(30),
+  rulesOnlyMode: boolean("rules_only_mode").notNull().default(false),
+  cycleIntervalMinutes: integer("cycle_interval_minutes").notNull().default(60),
   killUntil: timestamp("kill_until", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

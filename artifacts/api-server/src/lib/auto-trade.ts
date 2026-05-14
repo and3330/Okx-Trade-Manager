@@ -52,6 +52,8 @@ export type AutoTradeConfig = {
   minConsensusCount: number;
   minAvgConfidence: number;
   cooldownMinutes: number;
+  rulesOnlyMode: boolean;
+  cycleIntervalMinutes: number;
   killUntil: string | null;
   updatedAt: string;
 };
@@ -74,6 +76,8 @@ const DEFAULT_CONFIG: Omit<AutoTradeConfig, "updatedAt" | "killUntil"> = {
   minConsensusCount: 3,
   minAvgConfidence: 7,
   cooldownMinutes: 30,
+  rulesOnlyMode: false,
+  cycleIntervalMinutes: 60,
 };
 
 function rowToConfig(row: typeof autoTradeConfigTable.$inferSelect): AutoTradeConfig {
@@ -90,6 +94,8 @@ function rowToConfig(row: typeof autoTradeConfigTable.$inferSelect): AutoTradeCo
     minConsensusCount: row.minConsensusCount,
     minAvgConfidence: row.minAvgConfidence,
     cooldownMinutes: row.cooldownMinutes,
+    rulesOnlyMode: row.rulesOnlyMode,
+    cycleIntervalMinutes: row.cycleIntervalMinutes,
     killUntil: row.killUntil ? row.killUntil.toISOString() : null,
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -113,6 +119,8 @@ export async function getOrCreateConfig(): Promise<AutoTradeConfig> {
     minConsensusCount: DEFAULT_CONFIG.minConsensusCount,
     minAvgConfidence: DEFAULT_CONFIG.minAvgConfidence,
     cooldownMinutes: DEFAULT_CONFIG.cooldownMinutes,
+    rulesOnlyMode: DEFAULT_CONFIG.rulesOnlyMode,
+    cycleIntervalMinutes: DEFAULT_CONFIG.cycleIntervalMinutes,
   }).onConflictDoNothing();
   const after = await db.select().from(autoTradeConfigTable).where(eq(autoTradeConfigTable.id, SINGLETON_ID)).limit(1);
   return rowToConfig(after[0]!);
@@ -131,6 +139,8 @@ export type ConfigPatch = {
   minConsensusCount?: number | null;
   minAvgConfidence?: number | null;
   cooldownMinutes?: number | null;
+  rulesOnlyMode?: boolean | null;
+  cycleIntervalMinutes?: number | null;
 };
 
 export async function updateConfig(patch: ConfigPatch): Promise<AutoTradeConfig> {
@@ -154,6 +164,13 @@ export async function updateConfig(patch: ConfigPatch): Promise<AutoTradeConfig>
   if (patch.minConsensusCount != null) update["minConsensusCount"] = Math.max(2, Math.min(4, patch.minConsensusCount));
   if (patch.minAvgConfidence != null) update["minAvgConfidence"] = Math.max(1, Math.min(10, patch.minAvgConfidence));
   if (patch.cooldownMinutes != null) update["cooldownMinutes"] = Math.max(5, patch.cooldownMinutes);
+  if (patch.rulesOnlyMode != null) update["rulesOnlyMode"] = patch.rulesOnlyMode;
+  if (patch.cycleIntervalMinutes != null) {
+    // Allowed: 5, 10, 15, 30, 60 minutes — anything else snaps to nearest valid.
+    const allowed = [5, 10, 15, 30, 60];
+    const v = patch.cycleIntervalMinutes;
+    update["cycleIntervalMinutes"] = allowed.reduce((best, a) => Math.abs(a - v) < Math.abs(best - v) ? a : best, 60);
+  }
   // If user re-enables, clear any stale killUntil
   if (patch.enabled === true) update["killUntil"] = null;
   const [row] = await db.update(autoTradeConfigTable).set(update).where(eq(autoTradeConfigTable.id, SINGLETON_ID)).returning();
@@ -448,6 +465,15 @@ async function processInstrument(args: {
       consensus = synthesizeConsensusFromRules(ruleDecision);
       usedRulesOnly = true;
       logger.info({ instId, side: ruleDecision.side, score: ruleDecision.score }, "auto-trade: rules-only fast path");
+    } else if (cfg.rulesOnlyMode) {
+      // Rules-only mode + borderline = just hold (don't open). Saves AI cost.
+      pipeline = dataOnly;
+      usedRulesOnly = true;
+      consensus = synthesizeConsensusFromRules({
+        side: "long", score: 0, confidence: 5,
+        reasoning: `規則模式: 共振不夠強, 不開倉 (long=${dataOnly.strategyLong?.score ?? 0}/7, short=${dataOnly.strategyShort?.score ?? 0}/7)`,
+      });
+      consensus = { ...consensus, action: "hold" } as Consensus;
     } else {
       // Borderline — fall through to full AI pipeline. Re-fetches Stage 0 data
       // (~3-5 OKX calls); acceptable cost for the rare borderline case.
@@ -457,8 +483,48 @@ async function processInstrument(args: {
       ]);
       consensus = computeConsensus(pipeline.recommendations, providerWeights);
     }
+  } else if (cfg.rulesOnlyMode) {
+    // Rules-only mode + existing position: skip AI entirely, decide close from checklist.
+    // Close triggers (any one):
+    //   1. Trend break:  the held side now has a hardBlock (e.g. price flipped 4H EMA200).
+    //   2. Strong reverse: opposite checklist score ≥ 5 with zero hardBlocks.
+    //   3. Momentum collapse: held side score ≤ 2.
+    const dataOnly = await runResearchPipeline({ instId, mode: "perp", maxMarginUsdt, maxLeverage, skipAi: true });
+    pipeline = dataOnly;
+    usedRulesOnly = true;
+    const heldSide = existingPos.contracts > 0 ? "long" : "short";
+    const heldChk = heldSide === "long" ? dataOnly.strategyLong : dataOnly.strategyShort;
+    const oppChk  = heldSide === "long" ? dataOnly.strategyShort : dataOnly.strategyLong;
+    const trendBreak = heldChk != null && heldChk.hardBlocks.length > 0;
+    const strongReverse = oppChk != null && oppChk.hardBlocks.length === 0 && oppChk.score >= 5;
+    const momentumCollapse = heldChk != null && heldChk.score <= 2;
+    const shouldClose = trendBreak || strongReverse || momentumCollapse;
+    if (shouldClose) {
+      const reasons: string[] = [];
+      if (trendBreak) reasons.push(`trend_break(${heldChk!.hardBlocks.join(",")})`);
+      if (strongReverse) reasons.push(`reverse(opp=${oppChk!.score}/7)`);
+      if (momentumCollapse) reasons.push(`collapse(held=${heldChk!.score}/7)`);
+      consensus = synthesizeConsensusFromRules({
+        side: heldSide,
+        score: heldChk?.score ?? 0,
+        confidence: 8,
+        reasoning: `規則直接判定平倉: ${reasons.join(" + ")}`,
+      });
+      // Override action to "close" — synthesizeConsensusFromRules returns long/short, we want close here.
+      consensus = { ...consensus, action: "close" } as Consensus;
+      logger.info({ instId, heldSide, reasons }, "auto-trade: rules-only close triggered");
+    } else {
+      // Hold — no AI, no close.
+      consensus = synthesizeConsensusFromRules({
+        side: heldSide,
+        score: heldChk?.score ?? 0,
+        confidence: 5,
+        reasoning: `規則持倉觀察: ${heldSide} ${heldChk?.score ?? 0}/7, 無平倉訊號`,
+      });
+      consensus = { ...consensus, action: "hold" } as Consensus;
+    }
   } else {
-    // Existing position — must run AI so it can vote close.
+    // Existing position + AI mode — run full AI so 4-model consensus can vote close.
     [pipeline, providerWeights] = await Promise.all([
       runResearchPipeline({ instId, mode: "perp", maxMarginUsdt, maxLeverage }),
       getProviderWeights(),
@@ -1071,7 +1137,8 @@ async function runTrailingTickInner(): Promise<void> {
 // ---------- Scheduler ----------
 
 let timer: NodeJS.Timeout | null = null;
-let lastTriggeredHour = -1;
+let lastScheduledCycleAt: Date | null = null;
+let scheduledCycleRunning = false;
 
 export function startScheduler(): void {
   if (timer) return;
@@ -1090,20 +1157,29 @@ export function startScheduler(): void {
           );
         }
 
-        // Hourly consensus cycle at HH:01.
-        if (now.getMinutes() === 1 && now.getHours() !== lastTriggeredHour) {
-          lastTriggeredHour = now.getHours();
-          if (!enabled || killed) return;
-          logger.info({ minute: now.getMinutes() }, "auto-trade cycle starting");
+        // Consensus cycle: triggered when elapsed since last run >= cfg.cycleIntervalMinutes.
+        // Default 60min; user can drop to 5/10/15/30 (rules-only mode recommended at <30 to avoid AI cost).
+        if (!enabled || killed || !cfg) return;
+        if (scheduledCycleRunning) return;
+        const intervalMs = Math.max(5, cfg.cycleIntervalMinutes) * 60 * 1000;
+        const elapsedOk = !lastScheduledCycleAt || now.getTime() - lastScheduledCycleAt.getTime() >= intervalMs;
+        if (!elapsedOk) return;
+        scheduledCycleRunning = true;
+        lastScheduledCycleAt = now;
+        try {
+          logger.info({ intervalMin: cfg.cycleIntervalMinutes, rulesOnly: cfg.rulesOnlyMode }, "auto-trade cycle starting");
           const result = await runCycle();
           logger.info({ entries: result.perInstrument.length }, "auto-trade cycle done");
+        } finally {
+          scheduledCycleRunning = false;
         }
       } catch (err) {
+        scheduledCycleRunning = false;
         logger.error({ err }, "scheduler tick failed");
       }
     })();
   }, 60 * 1000);
-  logger.info("auto-trade scheduler started (trailing + hourly cycle)");
+  logger.info("auto-trade scheduler started (trailing + interval cycle)");
 }
 
 // ---------- Status & Listing ----------

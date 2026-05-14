@@ -899,7 +899,7 @@ components:
 
     AutoTradeConfig:
       type: object
-      required: [enabled, whitelist, scannerEnabled, scannerPickCount, scannerMinVolUsd24h, maxMarginPctPerTrade, maxDailyLossPct, maxConcurrentPositions, maxLeverage, minConsensusCount, minAvgConfidence, cooldownMinutes, updatedAt]
+      required: [enabled, whitelist, scannerEnabled, scannerPickCount, scannerMinVolUsd24h, maxMarginPctPerTrade, maxDailyLossPct, maxConcurrentPositions, maxLeverage, minConsensusCount, minAvgConfidence, cooldownMinutes, rulesOnlyMode, cycleIntervalMinutes, updatedAt]
       properties:
         enabled:
           type: boolean
@@ -926,6 +926,10 @@ components:
         minAvgConfidence:
           type: integer
         cooldownMinutes:
+          type: integer
+        rulesOnlyMode:
+          type: boolean
+        cycleIntervalMinutes:
           type: integer
         killUntil:
           type: ["string", "null"]
@@ -960,6 +964,10 @@ components:
         minAvgConfidence:
           type: ["integer", "null"]
         cooldownMinutes:
+          type: ["integer", "null"]
+        rulesOnlyMode:
+          type: ["boolean", "null"]
+        cycleIntervalMinutes:
           type: ["integer", "null"]
 
     AutoTradeStatus:

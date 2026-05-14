@@ -31,6 +31,8 @@ type Cfg = {
   minConsensusCount: number;
   minAvgConfidence: number;
   cooldownMinutes: number;
+  rulesOnlyMode: boolean;
+  cycleIntervalMinutes: number;
   killUntil: string | null;
   updatedAt: string;
 };
@@ -88,6 +90,8 @@ export default function AutoTradePanel() {
           minConsensusCount: Number(draft.minConsensusCount),
           minAvgConfidence: Number(draft.minAvgConfidence),
           cooldownMinutes: Number(draft.cooldownMinutes),
+          rulesOnlyMode: draft.rulesOnlyMode,
+          cycleIntervalMinutes: Number(draft.cycleIntervalMinutes),
         },
       },
       {
@@ -172,7 +176,7 @@ export default function AutoTradePanel() {
         <div className="flex items-center justify-between border border-border rounded-md p-2 bg-background/40">
           <div>
             <div className="text-xs font-semibold">啟用自動交易</div>
-            <div className="text-[10px] text-muted-foreground">每小時 HH:01 觸發 — 真實下單</div>
+            <div className="text-[10px] text-muted-foreground">依「檢測週期」設定間隔觸發 — 真實下單</div>
           </div>
           <button
             type="button"
@@ -207,7 +211,7 @@ export default function AutoTradePanel() {
         </div>
 
         <div>
-          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">核心白名單（每小時固定跑，永續 instId 用逗號分隔）</Label>
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">核心白名單（每輪固定跑，永續 instId 用逗號分隔）</Label>
           <Input
             className="h-8 text-xs font-mono mt-1"
             value={draft.whitelist.join(",")}
@@ -251,6 +255,50 @@ export default function AutoTradePanel() {
           </div>
           <div className="text-[10px] text-muted-foreground">
             每輪總標的 = 核心 {draft.whitelist.length} + 掃描挑 {draft.scannerEnabled ? draft.scannerPickCount : 0} = 約 {draft.whitelist.length + (draft.scannerEnabled ? draft.scannerPickCount : 0)} 個
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-3 mt-3 space-y-3">
+          <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">引擎節奏與成本</div>
+
+          <div className="flex items-center justify-between border border-border rounded-md p-2 bg-background/40">
+            <div>
+              <div className="text-xs font-semibold">純規則模式（不花 AI）</div>
+              <div className="text-[10px] text-muted-foreground">完全跳過 AI 呼叫；用內建共振分數判斷開倉、用趨勢/反轉/動能崩潰判斷平倉</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDraft({ ...draft, rulesOnlyMode: !draft.rulesOnlyMode })}
+              className={cn(
+                "relative h-5 w-10 rounded-full transition-colors",
+                draft.rulesOnlyMode ? "bg-[#00e59b]" : "bg-muted",
+              )}
+            >
+              <span className={cn(
+                "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
+                draft.rulesOnlyMode ? "translate-x-5" : "translate-x-0.5",
+              )} />
+            </button>
+          </div>
+
+          <div>
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">檢測週期</Label>
+            <select
+              className="mt-1 w-full h-8 text-xs font-mono bg-background border border-border rounded px-2"
+              value={draft.cycleIntervalMinutes}
+              onChange={(e) => setDraft({ ...draft, cycleIntervalMinutes: Number(e.target.value) })}
+            >
+              <option value={5}>每 5 分鐘（建議搭配純規則）</option>
+              <option value={10}>每 10 分鐘</option>
+              <option value={15}>每 15 分鐘</option>
+              <option value={30}>每 30 分鐘</option>
+              <option value={60}>每 60 分鐘（預設，AI 模式）</option>
+            </select>
+            <div className="text-[10px] text-muted-foreground mt-1">
+              {draft.rulesOnlyMode
+                ? `純規則 + ${draft.cycleIntervalMinutes} 分鐘：每輪約 ${(draft.whitelist.length + (draft.scannerEnabled ? draft.scannerPickCount : 0))} 次 OKX 行情查詢，0 次 AI 呼叫`
+                : `AI 模式 + ${draft.cycleIntervalMinutes} 分鐘：每輪可能呼叫 4 個 AI 模型，注意成本`}
+            </div>
           </div>
         </div>
 
