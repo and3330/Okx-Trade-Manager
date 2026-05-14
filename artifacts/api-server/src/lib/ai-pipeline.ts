@@ -530,12 +530,21 @@ ${strategyText}
 - 7/7 → 最高 10x  /  5-6/7 → 最高 5x  /  3-4/7 → 最高 3x
 
 ══════════════════════════════════════
-【止損止盈規則 — ATR 動態止損】
+【止損止盈規則 — ATR 2.5 倍動態止損】
 ══════════════════════════════════════
-- 止損 = 進場價 ± (2 × 1H ATR)  (做多 -, 做空 +)
-- 止盈 = 進場價 ± (4 × 1H ATR) → 盈虧比 1:2 (最低標準)
-- 高信心可放寬到 6 × ATR → 1:3
+- 止損 = 進場價 ± (2.5 × 1H ATR)  (做多 -, 做空 +) — 採用較大倍數防插針
+- 止盈 = 進場價 ± (5 × 1H ATR) → 盈虧比 1:2 (最低標準)
+- 高信心可放寬到 7.5 × ATR → 1:3
 - **絕對禁止盈虧比 < 1:1.5**
+
+【強平緩衝規則】
+- 槓桿選擇必須讓 ATR 止損價距離強平價至少 40% 緩衝
+- 高波動期 (ATR/價 > 3%) → 槓桿 3-5x
+- 低波動期 (ATR/價 < 1%) → 可上 10-20x
+
+【方向背離規則】
+- 4H EMA200 趨勢看多但 1H 價格已跌破 EMA10 → 進入觀察模式,禁止做多
+- 4H EMA200 趨勢看空但 1H 價格已突破 EMA10 → 進入觀察模式,禁止做空
 
 ══════════════════════════════════════
 【原始技術指標數值 — 自行覆核】
@@ -635,6 +644,18 @@ export function computeStrategyChecklist(side: "long" | "short", x: ChecklistInp
       ? `1H EMA10 ${x.ema10_1h.toFixed(2)} vs EMA20 ${x.ema20_1h.toFixed(2)}`
       : "(無數據)",
   });
+
+  // 2b. 大趨勢 vs 小週期動能背離 (per second strategy doc) — hard block.
+  // 多: 4H 趨勢看多 (price > EMA200) 但 1H 動能向下 (price < EMA10) → 觀察模式禁開
+  // 空: 反之亦然
+  if (x.ema200_4h != null && x.ema10_1h != null) {
+    if (side === "long" && x.lastPrice > x.ema200_4h && x.lastPrice < x.ema10_1h) {
+      hard.push("trend_momentum_divergence_long");
+    }
+    if (side === "short" && x.lastPrice < x.ema200_4h && x.lastPrice > x.ema10_1h) {
+      hard.push("trend_momentum_divergence_short");
+    }
+  }
 
   // 3. MACD on 1H
   let macdOk = false;
@@ -742,6 +763,27 @@ export function scoreMaxLeverage(score: number): number {
   if (score >= 5) return 5;
   if (score >= 3) return 3;
   return 1;
+}
+
+// Volatility-adjusted leverage cap (per second strategy doc):
+// 高波動低槓桿、低波動高槓桿。Input is ATR as % of price.
+export function volAdjustedLeverageCap(atrPct: number): number {
+  if (!Number.isFinite(atrPct) || atrPct <= 0) return 20;
+  if (atrPct >= 4) return 3;
+  if (atrPct >= 3) return 5;
+  if (atrPct >= 2) return 8;
+  if (atrPct >= 1) return 12;
+  return 20;
+}
+
+// Liquidation-buffer leverage cap: ensure 2.5×ATR stop-loss distance leaves at
+// least 40% buffer to estimated isolated-margin liquidation price.
+// Approx: liq_distance ≈ price / leverage. Require 2.5×ATR < 0.6 × (price/leverage).
+// → leverage < 0.6 × price / (2.5 × ATR) = 0.24 / (ATR/price)
+export function liquidationBufferLeverageCap(atr: number, price: number): number {
+  if (!Number.isFinite(atr) || atr <= 0 || !Number.isFinite(price) || price <= 0) return 1;
+  const cap = Math.floor((0.6 * price) / (2.5 * atr));
+  return Math.max(1, cap);
 }
 
 // ---------- Pipeline output types ----------
