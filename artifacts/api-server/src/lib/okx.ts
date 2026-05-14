@@ -1114,6 +1114,34 @@ export async function fetchAccountSummary(): Promise<{
 
 const PUBLIC_BASE_URL = OKX_BASE_URL;
 
+// OKX public-API rate limit is ~20 req / 2s per endpoint. Auto-trade can fan
+// out 8 instruments × 4 derivative endpoints = 32 simultaneous calls, which
+// trips error 50011 ("Too Many Requests"). We throttle ALL publicGet calls
+// through a global queue: max 6 concurrent + 120ms minimum spacing between
+// request starts → ≈8 req/s sustained, well under the limit.
+const PUBLIC_MAX_CONCURRENT = 6;
+const PUBLIC_MIN_GAP_MS = 120;
+let publicInFlight = 0;
+let publicLastStartMs = 0;
+const publicWaiters: Array<() => void> = [];
+
+async function acquirePublicSlot(): Promise<void> {
+  if (publicInFlight >= PUBLIC_MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => publicWaiters.push(resolve));
+  }
+  publicInFlight += 1;
+  const now = Date.now();
+  const gap = publicLastStartMs + PUBLIC_MIN_GAP_MS - now;
+  if (gap > 0) await new Promise((r) => setTimeout(r, gap));
+  publicLastStartMs = Date.now();
+}
+
+function releasePublicSlot(): void {
+  publicInFlight -= 1;
+  const next = publicWaiters.shift();
+  if (next) next();
+}
+
 async function publicGet<T = unknown>(
   path: string,
   query?: Record<string, string>,
@@ -1122,16 +1150,30 @@ async function publicGet<T = unknown>(
   if (query && Object.keys(query).length > 0) {
     url += `?${new URLSearchParams(query).toString()}`;
   }
-  const res = await fetch(url);
-  const json = (await res.json().catch(() => ({}))) as OkxResponse<T>;
-  if (!res.ok || (json.code && json.code !== "0")) {
-    throw new OkxError(
-      String(json.code ?? res.status),
-      json.msg || `OKX HTTP ${res.status}`,
-      res.status >= 500 ? 502 : 400,
-    );
+  await acquirePublicSlot();
+  // Retry once on 50011 (rate-limited) with backoff — protects auto-trade cycle from a brief burst.
+  let attempt = 0;
+  try {
+    while (true) {
+      const res = await fetch(url);
+      const json = (await res.json().catch(() => ({}))) as OkxResponse<T>;
+      if (!res.ok || (json.code && json.code !== "0")) {
+        if (json.code === "50011" && attempt < 2) {
+          attempt += 1;
+          await new Promise((r) => setTimeout(r, 400 * attempt));
+          continue;
+        }
+        throw new OkxError(
+          String(json.code ?? res.status),
+          json.msg || `OKX HTTP ${res.status}`,
+          res.status >= 500 ? 502 : 400,
+        );
+      }
+      return json.data;
+    }
+  } finally {
+    releasePublicSlot();
   }
-  return json.data;
 }
 
 async function publicPost<T = unknown>(

@@ -110,8 +110,12 @@ export default function PositionsList({ onSelectInstId }: { onSelectInstId?: (in
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-6 px-2 text-[10px] uppercase"
-                      onClick={() => setPending({ instId: p.instId, posSide: p.posSide, baseCcy })}
+                      className="h-6 px-2 text-[10px] uppercase relative z-10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setPending({ instId: p.instId, posSide: p.posSide, baseCcy });
+                      }}
                     >
                       平倉
                     </Button>
