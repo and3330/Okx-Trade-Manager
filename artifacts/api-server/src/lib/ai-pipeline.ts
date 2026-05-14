@@ -841,7 +841,77 @@ export type RunPipelineOptions = {
   mode: "spot" | "perp";
   maxMarginUsdt?: number;
   maxLeverage?: number;
+  // Hybrid mode (selección C): when true, skip Stages 1-3 (AI calls) and return
+  // after Stage 0 + checklist computation. Used by auto-trade engine to avoid
+  // burning AI credits when the deterministic strategy rules can decide on their own.
+  skipAi?: boolean;
 };
+
+// Rules-only decision shape — returned by decideByRules when the deterministic
+// checklist alone is enough to pick a side (no AI needed).
+export type RuleDecision = {
+  side: "long" | "short";
+  score: number;
+  confidence: number;
+  reasoning: string;
+};
+
+// Decide whether the strategy checklist alone gives a clear directional signal.
+// Returns null when the situation is borderline (let AI vote in that case).
+//
+// Rules:
+//   - A side is eligible only if its checklist has ZERO hardBlocks AND score ≥ 5.
+//   - Need a clear gap (≥ 2) between the eligible side and the opposing side
+//     so we don't mechanically pick a 5-vs-4 squeaker.
+//   - If both sides eligible (rare — would mean trend & funding both ambiguous):
+//     fall through to AI.
+export function decideByRules(
+  longC: StrategyChecklist | null,
+  shortC: StrategyChecklist | null,
+): RuleDecision | null {
+  const longScore = longC && longC.hardBlocks.length === 0 ? longC.score : -1;
+  const shortScore = shortC && shortC.hardBlocks.length === 0 ? shortC.score : -1;
+  const longEligible = longScore >= 5;
+  const shortEligible = shortScore >= 5;
+  if (longEligible && shortEligible) return null; // rare but defensive — let AI decide
+  const scoreToConfidence = (s: number) => (s >= 7 ? 9 : s === 6 ? 8 : 7);
+  if (longEligible && longScore - shortScore >= 2) {
+    return {
+      side: "long",
+      score: longScore,
+      confidence: scoreToConfidence(longScore),
+      reasoning: `規則直接判定: 多方共振 ${longScore}/7, 空方 ${Math.max(0, shortScore)}/7 — AI 未呼叫`,
+    };
+  }
+  if (shortEligible && shortScore - longScore >= 2) {
+    return {
+      side: "short",
+      score: shortScore,
+      confidence: scoreToConfidence(shortScore),
+      reasoning: `規則直接判定: 空方共振 ${shortScore}/7, 多方 ${Math.max(0, longScore)}/7 — AI 未呼叫`,
+    };
+  }
+  return null;
+}
+
+// Build a Consensus-shaped object from a rules-only decision so the rest of
+// the auto-trade execution path (which expects Consensus) can run unchanged.
+export function synthesizeConsensusFromRules(d: RuleDecision): Consensus {
+  return {
+    action: d.side,
+    count: 0, // No AI providers; quorum check is bypassed by caller.
+    avgConfidence: d.confidence,
+    totalProviders: 0,
+    medianMarginUsdt: null, // let downstream score/vol caps decide
+    medianLeverage: null,
+    medianStopLossPrice: null, // ATR fallback will fill this
+    medianTakeProfitPrice: null,
+    medianSizeUsdt: null,
+    chosenProviderId: "rules-only",
+    regimeMajority: null, // rules path doesn't gate on regime — checklist already filtered
+    weightedScore: 0,
+  };
+}
 
 // ---------- Main pipeline ----------
 
@@ -908,6 +978,33 @@ export async function runResearchPipeline(opts: RunPipelineOptions): Promise<Res
   const strategyText = mode === "perp" && strategyLong && strategyShort
     ? `${summarizeStrategyChecklist(strategyLong)}\n\n${summarizeStrategyChecklist(strategyShort)}`
     : "(現貨模式不套用策略檢查)";
+
+  // Hybrid mode early-exit: caller (auto-trade engine) wants to inspect strategy
+  // checklist before deciding whether to spend AI credits. Return after Stage 0
+  // with empty recommendations and null AI summaries.
+  if (opts.skipAi) {
+    return {
+      instId,
+      mode,
+      generatedAt: new Date().toISOString(),
+      lastPrice: ticker.last,
+      technicalSummary: null,
+      sentimentSummary: null,
+      indicatorTextByBar: indicatorText || null,
+      contextText: contextText || null,
+      fundingRate: contextBundle.fundingRate?.fundingRate ?? null,
+      openInterestCcy: contextBundle.openInterest?.oiCcy ?? null,
+      longShortRatio: contextBundle.longShortRatio?.ratio ?? null,
+      takerBuyRatio: contextBundle.takerVolume?.buyRatio ?? null,
+      atr1H: atr,
+      ema200_4H,
+      ema10_1H,
+      ema20_1H,
+      strategyLong,
+      strategyShort,
+      recommendations: [],
+    };
+  }
 
   // Stage 1 + 2 in parallel
   const [technicalSummary, sentimentSummary] = await Promise.all([

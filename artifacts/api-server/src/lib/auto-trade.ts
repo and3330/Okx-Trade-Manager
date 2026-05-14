@@ -9,8 +9,12 @@ import {
   scoreMaxLeverage,
   volAdjustedLeverageCap,
   liquidationBufferLeverageCap,
+  decideByRules,
+  synthesizeConsensusFromRules,
   type AiRecommendation,
   type ProviderWeights,
+  type Consensus,
+  type ResearchResult,
   PROVIDERS,
 } from "./ai-pipeline";
 import {
@@ -418,11 +422,48 @@ async function processInstrument(args: {
   const maxMarginUsdt = Math.max(10, Math.min(maxMarginByPct, heldUsdt));
   const maxLeverage = cfg.maxLeverage;
 
-  const [pipeline, providerWeights] = await Promise.all([
-    runResearchPipeline({ instId, mode: "perp", maxMarginUsdt, maxLeverage }),
-    getProviderWeights(),
-  ]);
-  const consensus = computeConsensus(pipeline.recommendations, providerWeights);
+  // ─── Hybrid mode (選項 C) ───
+  // When there is NO existing position, try the rules-only fast path first:
+  // skipAi=true does Stage 0 only (data + checklist), then we ask `decideByRules`
+  // if the deterministic checklist alone gives a clear directional signal
+  // (one side score ≥ 5, opposite side ≤ score-2, no hardBlocks).
+  //   - Yes → execute via rules-only path; AI never called (saves ~5-15s + credits).
+  //   - No (borderline)  → promote to full AI pipeline (re-fetches data; acceptable).
+  // When there IS an existing position, ALWAYS run the full AI pipeline so the
+  // 4-model consensus can still vote "close" — rules-only path can only OPEN.
+  const existingPos = positions.find((p) => p.instId === instId);
+  const eligibleForFastPath = !existingPos;
+
+  let pipeline: ResearchResult;
+  let consensus: Consensus;
+  let providerWeights: ProviderWeights = new Map();
+  let usedRulesOnly = false;
+
+  if (eligibleForFastPath) {
+    const dataOnly = await runResearchPipeline({ instId, mode: "perp", maxMarginUsdt, maxLeverage, skipAi: true });
+    const ruleDecision = decideByRules(dataOnly.strategyLong, dataOnly.strategyShort);
+    if (ruleDecision) {
+      pipeline = dataOnly;
+      consensus = synthesizeConsensusFromRules(ruleDecision);
+      usedRulesOnly = true;
+      logger.info({ instId, side: ruleDecision.side, score: ruleDecision.score }, "auto-trade: rules-only fast path");
+    } else {
+      // Borderline — fall through to full AI pipeline. Re-fetches Stage 0 data
+      // (~3-5 OKX calls); acceptable cost for the rare borderline case.
+      [pipeline, providerWeights] = await Promise.all([
+        runResearchPipeline({ instId, mode: "perp", maxMarginUsdt, maxLeverage }),
+        getProviderWeights(),
+      ]);
+      consensus = computeConsensus(pipeline.recommendations, providerWeights);
+    }
+  } else {
+    // Existing position — must run AI so it can vote close.
+    [pipeline, providerWeights] = await Promise.all([
+      runResearchPipeline({ instId, mode: "perp", maxMarginUsdt, maxLeverage }),
+      getProviderWeights(),
+    ]);
+    consensus = computeConsensus(pipeline.recommendations, providerWeights);
+  }
 
   // Always record decision
   const decisionId = await recordDecision({
@@ -434,38 +475,41 @@ async function processInstrument(args: {
     recommendations: pipeline.recommendations,
     consensusAction: consensus.action,
     consensusConfidence: Math.round(consensus.avgConfidence),
-    triggeredBy: "auto",
+    triggeredBy: "auto", // rules-only path is identified via chosenProviderId="rules-only"
   });
 
-  // Quorum guard: require at least minConsensusCount providers to have responded successfully —
-  // otherwise a degraded fleet (e.g. 3 of 4 responding, all agreeing) "fails open" into a weaker quorum.
-  const successCount = pipeline.recommendations.filter((r) => r.ok && r.action).length;
-  if (successCount < cfg.minConsensusCount) {
-    return { instId, action: "skipped", reason: `insufficient_quorum ${successCount}/${cfg.minConsensusCount} models responded`, executionId: null };
-  }
-  // Apply consensus thresholds
-  if (consensus.action === "hold" || consensus.action == null) {
-    return { instId, action: "hold", reason: `no_consensus (counts=${consensus.count})`, executionId: null };
-  }
-  if (consensus.count < cfg.minConsensusCount) {
-    return { instId, action: "skipped", reason: `consensus_too_low ${consensus.count}/${cfg.minConsensusCount}`, executionId: null };
-  }
+  // AI-mode gates (quorum / hold / count / regime / confidence) are skipped
+  // when usedRulesOnly === true because the deterministic checklist has already
+  // enforced strict criteria (zero hardBlocks AND score ≥ 5 AND clear gap).
+  if (!usedRulesOnly) {
+    // Quorum guard: require at least minConsensusCount providers to have responded successfully —
+    // otherwise a degraded fleet (e.g. 3 of 4 responding, all agreeing) "fails open" into a weaker quorum.
+    const successCount = pipeline.recommendations.filter((r) => r.ok && r.action).length;
+    if (successCount < cfg.minConsensusCount) {
+      return { instId, action: "skipped", reason: `insufficient_quorum ${successCount}/${cfg.minConsensusCount} models responded`, executionId: null };
+    }
+    // Apply consensus thresholds
+    if (consensus.action === "hold" || consensus.action == null) {
+      return { instId, action: "hold", reason: `no_consensus (counts=${consensus.count})`, executionId: null };
+    }
+    if (consensus.count < cfg.minConsensusCount) {
+      return { instId, action: "skipped", reason: `consensus_too_low ${consensus.count}/${cfg.minConsensusCount}`, executionId: null };
+    }
 
-  // Regime filter (T004): close votes still go through, but new opens are filtered.
-  // Choppy = total skip; ranging = require an extra confidence point above the threshold.
-  const isOpenAction = consensus.action === "long" || consensus.action === "short";
-  const effectiveMinConf = isOpenAction && consensus.regimeMajority === "ranging"
-    ? cfg.minAvgConfidence + 1
-    : cfg.minAvgConfidence;
-  if (isOpenAction && consensus.regimeMajority === "choppy") {
-    return { instId, action: "skipped", reason: `regime_choppy (skip new opens)`, executionId: null };
+    // Regime filter (T004): close votes still go through, but new opens are filtered.
+    // Choppy = total skip; ranging = require an extra confidence point above the threshold.
+    const isOpenAction = consensus.action === "long" || consensus.action === "short";
+    const effectiveMinConf = isOpenAction && consensus.regimeMajority === "ranging"
+      ? cfg.minAvgConfidence + 1
+      : cfg.minAvgConfidence;
+    if (isOpenAction && consensus.regimeMajority === "choppy") {
+      return { instId, action: "skipped", reason: `regime_choppy (skip new opens)`, executionId: null };
+    }
+    if (consensus.avgConfidence < effectiveMinConf) {
+      const tag = effectiveMinConf > cfg.minAvgConfidence ? ` (regime=${consensus.regimeMajority}, +1)` : "";
+      return { instId, action: "skipped", reason: `confidence_too_low ${consensus.avgConfidence.toFixed(1)}/${effectiveMinConf}${tag}`, executionId: null };
+    }
   }
-  if (consensus.avgConfidence < effectiveMinConf) {
-    const tag = effectiveMinConf > cfg.minAvgConfidence ? ` (regime=${consensus.regimeMajority}, +1)` : "";
-    return { instId, action: "skipped", reason: `confidence_too_low ${consensus.avgConfidence.toFixed(1)}/${effectiveMinConf}${tag}`, executionId: null };
-  }
-
-  const existingPos = positions.find((p) => p.instId === instId);
 
   // Close action
   if (consensus.action === "close") {
