@@ -254,12 +254,17 @@ export type CandleData = {
   volume: number;
 };
 
-export async function fetchCandles(instId: string): Promise<CandleData[]> {
+export async function fetchCandles(
+  instId: string,
+  opts?: { bar?: string; limit?: number },
+): Promise<CandleData[]> {
   // OKX returns candles newest-first, each as [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+  const bar = opts?.bar ?? "1H";
+  const limit = opts?.limit ?? 100;
   const rows = await okxRequest<string[][]>(
     "GET",
     "/api/v5/market/candles",
-    { query: { instId, bar: "1H", limit: "100" }, signed: false },
+    { query: { instId, bar, limit: String(limit) }, signed: false },
   );
   return rows
     .slice()
@@ -936,6 +941,59 @@ export async function closePerpPosition(
   type Row = { instId: string };
   await okxRequest<Row[]>("POST", "/api/v5/trade/close-position", { body });
   return { instId: input.instId, status: "closed" };
+}
+
+export type PlaceStandaloneAlgoInput = {
+  instId: string;
+  /** Position side to close */
+  posSide: "long" | "short";
+  /** Contracts to close */
+  sz: number;
+  /** "conditional" for single trigger (TP-only or SL-only) or "oco" for both */
+  ordType: "conditional" | "oco";
+  tpTriggerPx?: number | null;
+  slTriggerPx?: number | null;
+  algoClOrdId?: string | null;
+};
+
+/**
+ * Place a standalone reduce-only algo order (used for partial TP / split SL+TP).
+ * Position-mode aware: in long_short_mode posSide is required; in net_mode reduceOnly is used.
+ */
+export async function placeStandaloneReduceOnlyAlgo(
+  input: PlaceStandaloneAlgoInput,
+): Promise<{ algoId: string }> {
+  const posMode = await fetchPositionMode();
+  // In long_short_mode the side is the closing market side, posSide names which book to reduce.
+  const closingSide = input.posSide === "long" ? "sell" : "buy";
+  const body: Record<string, unknown> = {
+    instId: input.instId,
+    tdMode: "isolated",
+    side: closingSide,
+    ordType: input.ordType,
+    sz: String(input.sz),
+  };
+  if (posMode === "long_short_mode") {
+    body["posSide"] = input.posSide;
+  } else {
+    body["reduceOnly"] = "true";
+  }
+  if (input.tpTriggerPx && input.tpTriggerPx > 0) {
+    body["tpTriggerPx"] = String(input.tpTriggerPx);
+    body["tpOrdPx"] = "-1";
+  }
+  if (input.slTriggerPx && input.slTriggerPx > 0) {
+    body["slTriggerPx"] = String(input.slTriggerPx);
+    body["slOrdPx"] = "-1";
+  }
+  if (input.algoClOrdId) body["algoClOrdId"] = input.algoClOrdId;
+
+  type Row = { algoId: string; sCode: string; sMsg: string };
+  const rows = await okxRequest<Row[]>("POST", "/api/v5/trade/order-algo", { body });
+  const r = rows[0];
+  if (!r) throw new OkxError("NO_RESPONSE", "OKX returned no algo result", 502);
+  if (r.sCode !== "0") throw new OkxError(r.sCode, r.sMsg || "Algo rejected", 400);
+  return { algoId: r.algoId };
 }
 
 export type ClosedPositionRow = {

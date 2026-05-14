@@ -6,6 +6,7 @@ import {
   runMarketScanner,
   computeConsensus,
   type AiRecommendation,
+  type ProviderWeights,
   PROVIDERS,
 } from "./ai-pipeline";
 import {
@@ -19,6 +20,8 @@ import {
   amendAlgoSlTrigger,
   fetchPositionsHistory,
   fetchAlgoOrderHistoryByAlgoId,
+  fetchPerpInstrument,
+  placeStandaloneReduceOnlyAlgo,
   type AccountBalanceData,
   type PerpPositionData,
 } from "./okx";
@@ -304,6 +307,96 @@ export async function runCycle(opts: { force?: boolean } = {}): Promise<RunCycle
   }
 }
 
+// ---------- Provider weights (T005) ----------
+//
+// Weight each AI by its recent closed-trade win rate, refreshed every 5 min so we don't
+// hammer the DB inside the hot processInstrument loop. Sample size <5 → neutral 1.0
+// (avoid early over-fitting). Win rate maps linearly to a [0.5, 1.5] weight band so
+// no single model dominates entirely.
+const PROVIDER_WEIGHTS_TTL_MS = 5 * 60 * 1000;
+const PROVIDER_WEIGHTS_LOOKBACK = 20;
+type CachedWeights = { at: number; map: ReadonlyMap<string, number> };
+let providerWeightsCache: CachedWeights | null = null;
+
+async function getProviderWeights(): Promise<ProviderWeights> {
+  const now = Date.now();
+  if (providerWeightsCache && now - providerWeightsCache.at < PROVIDER_WEIGHTS_TTL_MS) {
+    return providerWeightsCache.map;
+  }
+  const map = new Map<string, number>();
+  try {
+    // Most recent N closed executions per provider, computed via grouped iteration on a single query.
+    const rows = await db
+      .select({
+        chosenProviderId: autoTradeExecutionsTable.chosenProviderId,
+        realizedPnlUsdt: autoTradeExecutionsTable.realizedPnlUsdt,
+      })
+      .from(autoTradeExecutionsTable)
+      .where(
+        and(
+          isNotNull(autoTradeExecutionsTable.chosenProviderId),
+          isNotNull(autoTradeExecutionsTable.realizedPnlUsdt),
+          eq(autoTradeExecutionsTable.status, "closed"),
+        ),
+      )
+      .orderBy(desc(autoTradeExecutionsTable.createdAt))
+      .limit(PROVIDER_WEIGHTS_LOOKBACK * Math.max(PROVIDERS.length, 1) * 4);
+
+    const stats = new Map<string, { wins: number; total: number }>();
+    for (const r of rows) {
+      const pid = r.chosenProviderId;
+      if (!pid) continue;
+      const s = stats.get(pid) ?? { wins: 0, total: 0 };
+      if (s.total >= PROVIDER_WEIGHTS_LOOKBACK) continue;
+      const pnl = parseFloat(r.realizedPnlUsdt as unknown as string);
+      if (!Number.isFinite(pnl)) continue;
+      s.total += 1;
+      if (pnl > 0) s.wins += 1;
+      stats.set(pid, s);
+    }
+    for (const p of PROVIDERS) {
+      const s = stats.get(p.id);
+      if (!s || s.total < 5) {
+        map.set(p.id, 1);
+        continue;
+      }
+      const winRate = s.wins / s.total;
+      // Linear: winRate 0 → 0.5, 0.5 → 1.0, 1.0 → 1.5
+      const weight = Math.max(0.5, Math.min(1.5, 0.5 + winRate));
+      map.set(p.id, weight);
+    }
+  } catch (err) {
+    logger.warn({ err }, "getProviderWeights failed; defaulting to neutral");
+    for (const p of PROVIDERS) map.set(p.id, 1);
+  }
+  providerWeightsCache = { at: now, map };
+  return map;
+}
+
+// ---------- Dynamic position sizing (T001) ----------
+//
+// Map average-confidence (1-10) to a desired margin% of equity, then cap at the user's
+// hard ceiling cfg.maxMarginPctPerTrade. Below confidence 7 we wouldn't open anyway
+// (gated by minAvgConfidence), so the curve only matters for 7-10.
+//   conf 7 → 3%, 8 → 5%, 9 → 7%, 10 → 8%   (linear interpolation)
+function confidenceMarginPct(avgConfidence: number, capPct: number): number {
+  let desired: number;
+  if (avgConfidence <= 7) desired = 3;
+  else if (avgConfidence >= 10) desired = 8;
+  else {
+    // 7→3, 8→5, 9→7, 10→8
+    const points: ReadonlyArray<readonly [number, number]> = [[7, 3], [8, 5], [9, 7], [10, 8]];
+    const lo = points[Math.floor(avgConfidence) - 7]!;
+    const hi = points[Math.ceil(avgConfidence) - 7]!;
+    if (lo[0] === hi[0]) desired = lo[1];
+    else {
+      const t = (avgConfidence - lo[0]) / (hi[0] - lo[0]);
+      desired = lo[1] + t * (hi[1] - lo[1]);
+    }
+  }
+  return Math.max(0.5, Math.min(desired, capPct));
+}
+
 async function processInstrument(args: {
   cfg: AutoTradeConfig;
   instId: string;
@@ -321,10 +414,11 @@ async function processInstrument(args: {
   const maxMarginUsdt = Math.max(10, Math.min(maxMarginByPct, heldUsdt));
   const maxLeverage = cfg.maxLeverage;
 
-  const pipeline = await runResearchPipeline({
-    instId, mode: "perp", maxMarginUsdt, maxLeverage,
-  });
-  const consensus = computeConsensus(pipeline.recommendations);
+  const [pipeline, providerWeights] = await Promise.all([
+    runResearchPipeline({ instId, mode: "perp", maxMarginUsdt, maxLeverage }),
+    getProviderWeights(),
+  ]);
+  const consensus = computeConsensus(pipeline.recommendations, providerWeights);
 
   // Always record decision
   const decisionId = await recordDecision({
@@ -352,8 +446,19 @@ async function processInstrument(args: {
   if (consensus.count < cfg.minConsensusCount) {
     return { instId, action: "skipped", reason: `consensus_too_low ${consensus.count}/${cfg.minConsensusCount}`, executionId: null };
   }
-  if (consensus.avgConfidence < cfg.minAvgConfidence) {
-    return { instId, action: "skipped", reason: `confidence_too_low ${consensus.avgConfidence.toFixed(1)}/${cfg.minAvgConfidence}`, executionId: null };
+
+  // Regime filter (T004): close votes still go through, but new opens are filtered.
+  // Choppy = total skip; ranging = require an extra confidence point above the threshold.
+  const isOpenAction = consensus.action === "long" || consensus.action === "short";
+  const effectiveMinConf = isOpenAction && consensus.regimeMajority === "ranging"
+    ? cfg.minAvgConfidence + 1
+    : cfg.minAvgConfidence;
+  if (isOpenAction && consensus.regimeMajority === "choppy") {
+    return { instId, action: "skipped", reason: `regime_choppy (skip new opens)`, executionId: null };
+  }
+  if (consensus.avgConfidence < effectiveMinConf) {
+    const tag = effectiveMinConf > cfg.minAvgConfidence ? ` (regime=${consensus.regimeMajority}, +1)` : "";
+    return { instId, action: "skipped", reason: `confidence_too_low ${consensus.avgConfidence.toFixed(1)}/${effectiveMinConf}${tag}`, executionId: null };
   }
 
   const existingPos = positions.find((p) => p.instId === instId);
@@ -365,12 +470,13 @@ async function processInstrument(args: {
       await closePerpPosition({ instId });
       const ticker = await fetchTicker(instId).catch(() => null);
       const closePx = ticker?.last ?? null;
-      const realized = closePx != null ? existingPos.unrealizedPnlUsd : null;
+      const baseRealized = closePx != null ? existingPos.unrealizedPnlUsd : null;
 
       // If we have a matching open execution row (engine-opened), update it in place so
       // the trailing tick won't also reconcile it as an external close (would double-count PnL).
+      // We fetch full row so we can fold in any prior TP1 leg PnL.
       const existingOpen = await db
-        .select({ id: autoTradeExecutionsTable.id })
+        .select()
         .from(autoTradeExecutionsTable)
         .where(
           and(
@@ -383,6 +489,14 @@ async function processInstrument(args: {
         .limit(1);
 
       if (existingOpen.length > 0) {
+        const openRow = existingOpen[0]!;
+        // If TP1 already filled, current unrealizedPnl reflects only the remaining half.
+        // Add the recorded TP1 leg so the row total reflects the whole trade.
+        let realized = baseRealized;
+        if (realized != null && openRow.tp1FilledAt && openRow.tp1RealizedPnl != null) {
+          const tp1 = parseFloat(openRow.tp1RealizedPnl as unknown as string);
+          if (Number.isFinite(tp1)) realized += tp1;
+        }
         await db
           .update(autoTradeExecutionsTable)
           .set({
@@ -392,9 +506,10 @@ async function processInstrument(args: {
             closedAt: new Date(),
             closeReason: "ai",
           })
-          .where(eq(autoTradeExecutionsTable.id, existingOpen[0]!.id));
-        return { instId, action: "executed_close", reason: null, executionId: existingOpen[0]!.id };
+          .where(eq(autoTradeExecutionsTable.id, openRow.id));
+        return { instId, action: "executed_close", reason: null, executionId: openRow.id };
       }
+      const realized = baseRealized;
 
       // No engine-opened row to attach to (e.g., user manually opened the position) — insert a new closing record.
       const [exec] = await db.insert(autoTradeExecutionsTable).values({
@@ -438,7 +553,10 @@ async function processInstrument(args: {
   }
 
   const side = consensus.action as "long" | "short";
-  const margin = Math.max(10, Math.min(consensus.medianMarginUsdt ?? maxMarginUsdt, maxMarginUsdt));
+  // Dynamic position sizing (T001): scale margin% by avg confidence, capped at user setting.
+  const dynamicPct = confidenceMarginPct(consensus.avgConfidence, cfg.maxMarginPctPerTrade);
+  const dynamicMaxMargin = Math.max(10, Math.min((balance.totalEquityUsd * dynamicPct) / 100, heldUsdt));
+  const margin = Math.max(10, Math.min(consensus.medianMarginUsdt ?? dynamicMaxMargin, dynamicMaxMargin));
   const leverage = Math.max(1, Math.min(consensus.medianLeverage ?? cfg.maxLeverage, cfg.maxLeverage));
 
   // Force SL via ATR if not provided
@@ -512,6 +630,54 @@ async function processInstrument(args: {
         logger.warn({ instId, algoClOrdId }, "could not locate attached algo by client ID; trailing disabled for this trade");
       }
     }
+    // Partial TP (T006): place a standalone reduce-only TP1 algo on ~50% of contracts at +1.5R.
+    // Best-effort — failure here doesn't roll back the trade (the attached OCO still fully protects).
+    //
+    // Skip TP1 entirely on add-on entries (existingPos same-side). The TP1-fill detection in
+    // trailing tick compares live position size to ~half of THIS order's contracts, but on an
+    // add-on the live size would be (existing + new) and the half-comparison would never match,
+    // so TP1 would silently never be recorded. Disabling it here keeps reconciliation honest.
+    let capturedAlgoTp1Id: string | null = null;
+    if (existingPos) {
+      logger.info({ instId }, "partial-TP1 skipped (add-on entry; pyramiding incompatible with half-fill detection)");
+    } else try {
+      const meta = await fetchPerpInstrument(instId);
+      const lotSz = meta.lotSz > 0 ? meta.lotSz : 1;
+      const minSz = meta.minSz > 0 ? meta.minSz : 1;
+      const halfRaw = result.contracts / 2;
+      const halfContracts = Math.floor(halfRaw / lotSz) * lotSz;
+      const remaining = result.contracts - halfContracts;
+      const rDistance = Math.abs(result.markPx - stopLossPrice);
+      const tp1Price = side === "long"
+        ? result.markPx + 1.5 * rDistance
+        : result.markPx - 1.5 * rDistance;
+      if (
+        halfContracts >= minSz &&
+        remaining >= minSz &&
+        rDistance > 0 &&
+        tp1Price > 0
+      ) {
+        const tp1ClOrdId = `at${decisionId}t${Math.random().toString(16).slice(2, 10)}`;
+        const placed = await placeStandaloneReduceOnlyAlgo({
+          instId,
+          posSide: side,
+          sz: halfContracts,
+          ordType: "conditional",
+          tpTriggerPx: tp1Price,
+          algoClOrdId: tp1ClOrdId,
+        });
+        capturedAlgoTp1Id = placed.algoId;
+        logger.info({ instId, halfContracts, tp1Price, algoId: placed.algoId }, "partial-TP1 algo placed");
+      } else {
+        logger.info(
+          { instId, contracts: result.contracts, halfContracts, remaining, minSz },
+          "partial-TP1 skipped (size below split threshold)",
+        );
+      }
+    } catch (err) {
+      logger.warn({ err, instId }, "partial-TP1 algo placement failed (continuing without TP1)");
+    }
+
     const [exec] = await db.insert(autoTradeExecutionsTable).values({
       decisionId, instId, side,
       marginUsdt: String(margin), leverage,
@@ -522,6 +688,9 @@ async function processInstrument(args: {
       chosenProviderId: consensus.chosenProviderId,
       algoSlId: capturedAlgoSlId,
       algoTpId: capturedAlgoTpId,
+      algoTp1Id: capturedAlgoTp1Id,
+      originalContracts: String(result.contracts),
+      regime: consensus.regimeMajority,
       initialSlPrice: String(stopLossPrice),
       trailingStage: 0,
     }).returning({ id: autoTradeExecutionsTable.id });
@@ -556,6 +725,56 @@ export async function runTrailingTick(): Promise<void> {
     await runTrailingTickInner();
   } finally {
     trailingTickRunning = false;
+  }
+}
+
+async function detectPartialTp1Fill(row: AutoTradeExecution, pos: PerpPositionData): Promise<boolean> {
+  // Returns true if we just recorded a TP1 partial fill (caller should NOT reconcile as full close).
+  if (row.tp1FilledAt) return true; // already recorded — treat remaining trailing as normal
+  if (!row.algoTp1Id) return false;
+  const original = row.originalContracts
+    ? Math.abs(parseFloat(row.originalContracts as unknown as string))
+    : 0;
+  if (!(original > 0)) return false;
+  const current = Math.abs(pos.contracts);
+  const half = original / 2;
+  // Position should be ~half of original (within 15% tolerance to absorb lotSz rounding).
+  if (Math.abs(current - half) / original > 0.15) return false;
+
+  try {
+    const state = await fetchAlgoOrderHistoryByAlgoId(row.algoTp1Id);
+    if (!state || state.state !== "effective") return false;
+    const entry = row.entryPrice ? parseFloat(row.entryPrice as unknown as string) : 0;
+    const closedContracts = original - current;
+    // Estimate realized PnL from the TP1 trigger price (best available estimate
+    // without per-fill data; close enough since TP1 is a market trigger).
+    // We need ctVal — fetch instrument meta. Failure → fall back to null PnL but still mark filled.
+    let tp1Pnl: number | null = null;
+    try {
+      const meta = await fetchPerpInstrument(row.instId);
+      const initialSl = row.initialSlPrice ? parseFloat(row.initialSlPrice as unknown as string) : 0;
+      const r = Math.abs(entry - initialSl);
+      const tp1Px = row.side === "long" ? entry + 1.5 * r : entry - 1.5 * r;
+      const sign = row.side === "long" ? 1 : -1;
+      tp1Pnl = sign * (tp1Px - entry) * closedContracts * meta.ctVal;
+    } catch (err) {
+      logger.warn({ err, instId: row.instId }, "tp1 PnL estimate failed");
+    }
+    await db
+      .update(autoTradeExecutionsTable)
+      .set({
+        tp1FilledAt: new Date(),
+        tp1RealizedPnl: tp1Pnl != null ? String(tp1Pnl) : null,
+      })
+      .where(eq(autoTradeExecutionsTable.id, row.id));
+    logger.info(
+      { execId: row.id, instId: row.instId, closedContracts, tp1Pnl },
+      "partial-TP1 fill detected and recorded; trailing continues on remainder",
+    );
+    return true;
+  } catch (err) {
+    logger.warn({ err, execId: row.id }, "detectPartialTp1Fill failed");
+    return false;
   }
 }
 
@@ -601,11 +820,17 @@ async function reconcileClosedExecution(row: AutoTradeExecution): Promise<void> 
     const ourContracts = row.contracts
       ? Math.abs(parseFloat(row.contracts as unknown as string))
       : 0;
+    // After a TP1 partial fill the final close size is ~half of the original. We accept
+    // either the full original size or the half-size as a valid match (within 15%).
+    const expectedSizes = [ourContracts];
+    if (row.tp1FilledAt && ourContracts > 0) expectedSizes.push(ourContracts / 2);
     let best: (typeof history)[number] | null = null;
     for (const h of history) {
-      if (ourContracts > 0) {
-        const diffPct = Math.abs(h.closeTotalPos - ourContracts) / ourContracts;
-        if (diffPct > 0.05) continue;
+      if (expectedSizes.length > 0 && expectedSizes[0]! > 0) {
+        const matchAny = expectedSizes.some(
+          (sz) => sz > 0 && Math.abs(h.closeTotalPos - sz) / sz <= 0.15,
+        );
+        if (!matchAny) continue;
       }
       if (!best || h.uTime > best.uTime) best = h;
     }
@@ -613,6 +838,12 @@ async function reconcileClosedExecution(row: AutoTradeExecution): Promise<void> 
       realizedPnl = best.realizedPnl;
       closePx = best.closeAvgPx;
       matched = true;
+      // Add the previously-recorded TP1 leg's PnL to the final realized total so
+      // the row's realizedPnlUsdt reflects the full trade, not just the second half.
+      if (row.tp1FilledAt && row.tp1RealizedPnl != null && realizedPnl != null) {
+        const tp1 = parseFloat(row.tp1RealizedPnl as unknown as string);
+        if (Number.isFinite(tp1)) realizedPnl += tp1;
+      }
     }
   } catch (err) {
     logger.warn({ err, execId: row.id, instId: row.instId }, "reconcile: positions-history fetch failed");
@@ -661,7 +892,7 @@ async function runTrailingTickInner(): Promise<void> {
   const positions = await fetchPerpPositions().catch(() => [] as PerpPositionData[]);
   const posByInst = new Map(positions.map((p) => [p.instId, p]));
 
-  for (const row of open) {
+  for (let row of open) {
     const side = row.side as "long" | "short";
     if (side !== "long" && side !== "short") continue;
 
@@ -670,6 +901,14 @@ async function runTrailingTickInner(): Promise<void> {
       // Position closed externally (TP/SL hit, manual). Reconcile realized PnL & reason.
       await reconcileClosedExecution(row);
       continue;
+    }
+
+    // Partial-TP1 fill detection: if pos has shrunk to ~half of original AND TP1 algo fired,
+    // record the partial without closing the row, then continue trailing on the remainder.
+    const tp1JustHandled = await detectPartialTp1Fill(row, pos);
+    if (tp1JustHandled && !row.tp1FilledAt) {
+      // We just wrote tp1FilledAt this tick — refresh local row so subsequent stages see it.
+      row = { ...row, tp1FilledAt: new Date() };
     }
 
     const entry = Number(row.entryPrice);

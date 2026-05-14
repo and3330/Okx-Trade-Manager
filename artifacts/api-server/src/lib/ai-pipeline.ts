@@ -146,7 +146,16 @@ export type RawDecision = {
   stopLossPrice?: unknown;
   confidence?: unknown;
   reasoning?: unknown;
+  regime?: unknown;
 };
+
+export type MarketRegime = "trending" | "ranging" | "choppy";
+function normalizeRegime(v: unknown): MarketRegime | null {
+  if (typeof v !== "string") return null;
+  const s = v.toLowerCase().trim();
+  if (s === "trending" || s === "ranging" || s === "choppy") return s;
+  return null;
+}
 
 export function parseDecision(raw: string): RawDecision {
   const trimmed = raw.trim();
@@ -172,6 +181,7 @@ export type NormalizedSpotDecision = {
   stopLossPrice: number | null;
   confidence: number | null;
   reasoning: string;
+  regime: MarketRegime | null;
 };
 export type NormalizedPerpDecision = {
   action: "long" | "short" | "close" | "hold";
@@ -182,6 +192,7 @@ export type NormalizedPerpDecision = {
   sizeUsdt: null;
   confidence: number | null;
   reasoning: string;
+  regime: MarketRegime | null;
 };
 
 export function normalizeSpotDecision(
@@ -207,7 +218,7 @@ export function normalizeSpotDecision(
   const confRaw = typeof d.confidence === "number" ? Math.round(d.confidence) : null;
   const confidence = confRaw == null ? null : Math.max(1, Math.min(10, confRaw));
   const reasoning = typeof d.reasoning === "string" ? d.reasoning.trim() : "";
-  return { action, sizeUsdt, stopLossPrice, confidence, reasoning };
+  return { action, sizeUsdt, stopLossPrice, confidence, reasoning, regime: normalizeRegime(d.regime) };
 }
 
 export function normalizePerpDecision(
@@ -252,7 +263,7 @@ export function normalizePerpDecision(
   const confRaw = typeof d.confidence === "number" ? Math.round(d.confidence) : null;
   const confidence = confRaw == null ? null : Math.max(1, Math.min(10, confRaw));
   const reasoning = typeof d.reasoning === "string" ? d.reasoning.trim() : "";
-  return { action, marginUsdt, leverage, takeProfitPrice, stopLossPrice, sizeUsdt: null, confidence, reasoning };
+  return { action, marginUsdt, leverage, takeProfitPrice, stopLossPrice, sizeUsdt: null, confidence, reasoning, regime: normalizeRegime(d.regime) };
 }
 
 // ---------- Stage 0: Market scanner ----------
@@ -336,29 +347,42 @@ picks 必須是 ${target} 個 instId 字串(必須出現在候選清單中,結�
 
 // ---------- Stage 1: Technical agent ----------
 
+function summarizeCandles(label: string, candles: CandleData[], maxRows: number): string {
+  const slice = candles.slice(-maxRows);
+  const lines = slice
+    .map((c) => `${c.ts.slice(5, 16).replace("T", " ")} O:${c.open} H:${c.high} L:${c.low} C:${c.close}`)
+    .join("\n");
+  return `${label} (共 ${slice.length} 根, 舊->新):\n${lines}`;
+}
+
 async function runTechnicalAgent(
   instId: string,
   ticker: TickerData,
-  candles: CandleData[],
+  candles1H: CandleData[],
+  candles4H: CandleData[],
+  candles15m: CandleData[],
   indicatorText: string,
 ): Promise<string> {
-  const last48 = candles.slice(-48);
-  const candleLines = last48
-    .map((c) => `${c.ts.slice(5, 16).replace("T", " ")} O:${c.open} H:${c.high} L:${c.low} C:${c.close}`)
-    .join("\n");
+  const c4h = summarizeCandles("4H K 線", candles4H, 24);
+  const c1h = summarizeCandles("1H K 線", candles1H, 48);
+  const c15m = summarizeCandles("15m K 線", candles15m, 60);
   const prompt = `你是一位資深技術分析師,正在分析 ${instId}。最新價 ${ticker.last}, 24h 漲跌 ${ticker.changePct24h.toFixed(2)}%, 24h 高/低 ${ticker.high24h}/${ticker.low24h}。
 
 多時框技術指標:
 ${indicatorText}
 
-最近 48 根 1H K 線(舊->新):
-${candleLines}
+${c4h}
 
-請用繁體中文寫一段精簡(250 字以內)的純技術觀點,只談技術面,不講基本面或情緒面。需含:
-1. 多時框趨勢結論(15m/1H/4H/1D 是否共振)。
+${c1h}
+
+${c15m}
+
+請用繁體中文寫一段精簡(300 字以內)的純技術觀點,只談技術面,不講基本面或情緒面。需含:
+1. 多時框趨勢結論(15m/1H/4H/1D 是否共振)。重點:若 4H 與 1H 趨勢相反,明確警告。
 2. 重要動能訊號(RSI/MACD/StochRSI 背離或突破)。
 3. 關鍵支撐壓力位(用 BB / EMA20 / Supertrend 數值)。
-4. 短線方向判斷(看多/看空/盤整),用一句話定調。
+4. 15m 進場時機觀察(剛突破 / 拉回中 / 等待)。
+5. 短線方向判斷(看多/看空/盤整),用一句話定調。
 
 直接給結論,不要前言、不要免責。`;
   try {
@@ -445,10 +469,11 @@ function buildPerpDecisionPrompt(args: {
   heldUsdt: number;
   technical: string;
   sentiment: string;
+  marketContextRaw: string;
   maxMarginUsdt: number;
   maxLeverage: number;
 }): string {
-  const { instId, ticker, meta, position, heldUsdt, technical, sentiment, maxMarginUsdt, maxLeverage } = args;
+  const { instId, ticker, meta, position, heldUsdt, technical, sentiment, marketContextRaw, maxMarginUsdt, maxLeverage } = args;
   const posCtx = position
     ? `現有 ${position.posSide === "short" || position.contracts < 0 ? "空" : "多"}倉 ${Math.abs(position.contracts)} 張, 均價 ${position.avgEntryPx}, 槓桿 ${position.leverage}x, 未實現 ${position.unrealizedPnlUsd.toFixed(2)} USDT (${position.unrealizedPnlPct.toFixed(2)}%)`
     : "目前無倉位";
@@ -457,26 +482,34 @@ function buildPerpDecisionPrompt(args: {
 標的: ${instId} (USDT 永續, 每張 ${meta.ctVal} ${meta.baseCcy}, 最小 ${meta.minSz} 張, 最高槓桿 ${meta.maxLeverage}x)
 最新價: ${ticker.last}
 
-【技術分析師觀點】
+【技術分析師觀點 (含 4H/1H/15m 多時框)】
 ${technical}
 
 【情緒/資金面分析師觀點】
 ${sentiment}
 
+【合約市場原始數據】
+${marketContextRaw}
+
 【帳戶】
 - USDT 可用保證金: ${heldUsdt}
 - ${posCtx}
 
-請決定一個動作: long / short / close / hold。
+請決定一個動作: long / short / close / hold。同時判斷市場結構 (regime):
+- "trending": 明確單向趨勢 (4H/1H 共振、ADX > 25)
+- "ranging": 區間震盪但有清楚支撐壓力 (可在區間端做反轉)
+- "choppy": 雜訊大、方向不明、無清楚結構 → 應停手
+
 限制:
 - ${position ? `若想停利停損平倉用 close。同向加倉用 long/short。反向先 close。` : `無倉位不要回 close。`}
 - 開倉: marginUsdt > 0 且 <= ${maxMarginUsdt.toFixed(2)}。leverage 1~${maxLeverage}。
 - TP/SL 觸發價: 多單 TP > ${ticker.last}、SL < ${ticker.last};空單相反。可填 null。
 - confidence 1-10。
 - reasoning 繁體中文 2-4 句,明確說你採信技術還是情緒、為何。
+- regime 必填:"trending" / "ranging" / "choppy" 三選一。choppy 時建議 action=hold。
 
 只回 JSON:
-{"action":"long"|"short"|"close"|"hold","marginUsdt":number|null,"leverage":integer|null,"takeProfitPrice":number|null,"stopLossPrice":number|null,"confidence":integer,"reasoning":string}`;
+{"action":"long"|"short"|"close"|"hold","marginUsdt":number|null,"leverage":integer|null,"takeProfitPrice":number|null,"stopLossPrice":number|null,"confidence":integer,"reasoning":string,"regime":"trending"|"ranging"|"choppy"}`;
 }
 
 // ---------- Pipeline output types ----------
@@ -496,6 +529,7 @@ export type AiRecommendation = {
   stopLossPrice: number | null;
   confidence: number | null;
   reasoning: string | null;
+  regime: MarketRegime | null;
 };
 
 export type ResearchResult = {
@@ -529,10 +563,12 @@ export async function runResearchPipeline(opts: RunPipelineOptions): Promise<Res
   const userMaxMargin = opts.maxMarginUsdt && opts.maxMarginUsdt > 0 ? opts.maxMarginUsdt : 200;
   const userMaxLev = opts.maxLeverage && opts.maxLeverage > 0 ? opts.maxLeverage : 20;
 
-  // Stage 0: parallel data fetch
-  const [ticker, candles, balance, indicatorsByBar, contextBundle, atr] = await Promise.all([
+  // Stage 0: parallel data fetch — multi-timeframe candles (4H/1H/15m) + indicators + context
+  const [ticker, candles1H, candles4H, candles15m, balance, indicatorsByBar, contextBundle, atr] = await Promise.all([
     fetchTicker(instId),
-    fetchCandles(instId),
+    fetchCandles(instId, { bar: "1H", limit: 100 }),
+    fetchCandles(instId, { bar: "4H", limit: 30 }).catch(() => [] as CandleData[]),
+    fetchCandles(instId, { bar: "15m", limit: 80 }).catch(() => [] as CandleData[]),
     fetchAccountBalance().catch(() => null as AccountBalanceData | null),
     fetchStandardMultiTimeframeIndicators(instId).catch(() => ({} as MultiTimeframeIndicators)),
     mode === "perp"
@@ -548,7 +584,7 @@ export async function runResearchPipeline(opts: RunPipelineOptions): Promise<Res
 
   // Stage 1 + 2 in parallel
   const [technicalSummary, sentimentSummary] = await Promise.all([
-    runTechnicalAgent(instId, ticker, candles, indicatorText || "(無技術指標資料)"),
+    runTechnicalAgent(instId, ticker, candles1H, candles4H, candles15m, indicatorText || "(無技術指標資料)"),
     mode === "perp" && contextText !== "(無情緒資料)"
       ? runSentimentAgent(instId, contextText, ticker)
       : Promise.resolve("(現貨模式不分析資金面)"),
@@ -574,6 +610,7 @@ export async function runResearchPipeline(opts: RunPipelineOptions): Promise<Res
     prompt = buildPerpDecisionPrompt({
       instId, ticker, meta, position, heldUsdt,
       technical: technicalSummary, sentiment: sentimentSummary,
+      marketContextRaw: contextText || "(無合約市場數據)",
       maxMarginUsdt, maxLeverage,
     });
     normalizer = (raw) =>
@@ -617,6 +654,7 @@ export async function runResearchPipeline(opts: RunPipelineOptions): Promise<Res
           stopLossPrice: decision.stopLossPrice ?? null,
           confidence: decision.confidence,
           reasoning: decision.reasoning || null,
+          regime: decision.regime,
         };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -626,6 +664,7 @@ export async function runResearchPipeline(opts: RunPipelineOptions): Promise<Res
           latencyMs: Date.now() - startedAt, ok: false, error: msg,
           action: null, sizeUsdt: null, marginUsdt: null, leverage: null,
           takeProfitPrice: null, stopLossPrice: null, confidence: null, reasoning: null,
+          regime: null,
         };
       }
     }),
@@ -665,7 +704,11 @@ export type Consensus = {
   medianTakeProfitPrice: number | null;
   medianSizeUsdt: number | null;
   chosenProviderId: string | null;
+  regimeMajority: MarketRegime | null;
+  weightedScore: number;
 };
+
+export type ProviderWeights = ReadonlyMap<string, number>;
 
 function median(nums: number[]): number | null {
   if (nums.length === 0) return null;
@@ -674,42 +717,85 @@ function median(nums: number[]): number | null {
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 
-export function computeConsensus(recs: AiRecommendation[]): Consensus {
+function weightOf(weights: ProviderWeights | undefined, providerId: string): number {
+  if (!weights) return 1;
+  const w = weights.get(providerId);
+  return typeof w === "number" && Number.isFinite(w) && w > 0 ? w : 1;
+}
+
+function computeRegimeMajority(recs: AiRecommendation[]): MarketRegime | null {
+  const counts = new Map<MarketRegime, number>();
+  for (const r of recs) {
+    if (!r.ok || !r.regime) continue;
+    counts.set(r.regime, (counts.get(r.regime) ?? 0) + 1);
+  }
+  let best: MarketRegime | null = null;
+  let bestN = 0;
+  // Deterministic tie-break: prefer "choppy" > "ranging" > "trending" (most-conservative wins)
+  // so identical counts don't depend on Map insertion order.
+  const conservativeRank: Record<MarketRegime, number> = { choppy: 2, ranging: 1, trending: 0 };
+  for (const [k, n] of counts.entries()) {
+    if (n > bestN || (n === bestN && best != null && conservativeRank[k] > conservativeRank[best])) {
+      best = k; bestN = n;
+    }
+  }
+  return best;
+}
+
+export function computeConsensus(recs: AiRecommendation[], weights?: ProviderWeights): Consensus {
   const valid = recs.filter((r) => r.ok && r.action);
-  const counts = new Map<string, AiRecommendation[]>();
+  const groups = new Map<string, AiRecommendation[]>();
   for (const r of valid) {
     const a = r.action!;
-    if (!counts.has(a)) counts.set(a, []);
-    counts.get(a)!.push(r);
+    if (!groups.has(a)) groups.set(a, []);
+    groups.get(a)!.push(r);
   }
-  // Find non-hold action with the largest count (ties broken by avg confidence)
+  // Pick non-hold action with the largest WEIGHTED score (raw count is still surfaced
+  // separately as `count` for the minConsensusCount gate). Ties broken by raw count,
+  // then by avg confidence.
   let bestAction: string | null = null;
   let bestList: AiRecommendation[] = [];
-  for (const [a, list] of counts.entries()) {
+  let bestWeighted = -1;
+  for (const [a, list] of groups.entries()) {
     if (a === "hold") continue;
-    if (list.length > bestList.length) { bestAction = a; bestList = list; }
-    else if (list.length === bestList.length && bestList.length > 0) {
+    const weighted = list.reduce((s, r) => s + weightOf(weights, r.providerId), 0);
+    if (weighted > bestWeighted) {
+      bestAction = a; bestList = list; bestWeighted = weighted;
+    } else if (weighted === bestWeighted && list.length > bestList.length) {
+      bestAction = a; bestList = list;
+    } else if (weighted === bestWeighted && list.length === bestList.length && bestList.length > 0) {
       const avgA = list.reduce((s, r) => s + (r.confidence ?? 0), 0) / list.length;
       const avgB = bestList.reduce((s, r) => s + (r.confidence ?? 0), 0) / bestList.length;
       if (avgA > avgB) { bestAction = a; bestList = list; }
     }
   }
   if (!bestAction || bestList.length === 0) {
+    // No directional consensus — surface the overall regime view across all responders.
     return {
-      action: "hold", count: counts.get("hold")?.length ?? 0,
+      action: "hold", count: groups.get("hold")?.length ?? 0,
       avgConfidence: 0, totalProviders: recs.length,
       medianMarginUsdt: null, medianLeverage: null,
       medianStopLossPrice: null, medianTakeProfitPrice: null, medianSizeUsdt: null,
       chosenProviderId: null,
+      regimeMajority: computeRegimeMajority(recs),
+      weightedScore: 0,
     };
   }
+  // Regime gating must reflect the WINNING action cohort, not the global vote — otherwise
+  // a clear long signal can be vetoed by orthogonal "choppy" votes that came with hold/short.
+  const regimeMajority = computeRegimeMajority(bestList);
   const avgConf = bestList.reduce((s, r) => s + (r.confidence ?? 0), 0) / bestList.length;
   const margins = bestList.map((r) => r.marginUsdt).filter((v): v is number => v != null);
   const levs = bestList.map((r) => r.leverage).filter((v): v is number => v != null);
   const sls = bestList.map((r) => r.stopLossPrice).filter((v): v is number => v != null);
   const tps = bestList.map((r) => r.takeProfitPrice).filter((v): v is number => v != null);
   const sizes = bestList.map((r) => r.sizeUsdt).filter((v): v is number => v != null);
-  const chosen = [...bestList].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0]!;
+  // Highest-weighted provider (weight × confidence) becomes the chosen one for execution attribution.
+  const chosen = [...bestList].sort((a, b) => {
+    const sa = weightOf(weights, a.providerId) * (a.confidence ?? 0);
+    const sb = weightOf(weights, b.providerId) * (b.confidence ?? 0);
+    return sb - sa;
+  })[0]!;
   return {
     action: bestAction as Consensus["action"],
     count: bestList.length,
@@ -721,5 +807,7 @@ export function computeConsensus(recs: AiRecommendation[]): Consensus {
     medianTakeProfitPrice: median(tps),
     medianSizeUsdt: median(sizes),
     chosenProviderId: chosen.providerId,
+    regimeMajority,
+    weightedScore: bestWeighted,
   };
 }
