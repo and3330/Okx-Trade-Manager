@@ -938,6 +938,98 @@ export async function closePerpPosition(
   return { instId: input.instId, status: "closed" };
 }
 
+export type ClosedPositionRow = {
+  instId: string;
+  realizedPnl: number | null;
+  closeAvgPx: number | null;
+  closeTotalPos: number;
+  uTime: number;
+  cTime: number;
+};
+
+export async function fetchPositionsHistory(args: {
+  instId: string;
+  afterMs?: number;
+  limit?: number;
+}): Promise<ClosedPositionRow[]> {
+  type Row = {
+    instId: string;
+    realizedPnl?: string;
+    pnl?: string;
+    closeAvgPx?: string;
+    closeTotalPos?: string;
+    uTime?: string;
+    cTime?: string;
+  };
+  const query: Record<string, string> = {
+    instType: "SWAP",
+    instId: args.instId,
+    limit: String(args.limit ?? 20),
+  };
+  // OKX uses `after`/`before` as cursors on the cTime field (descending).
+  // We don't filter server-side; just fetch the latest page and filter client-side.
+  const rows = await okxRequest<Row[]>(
+    "GET",
+    "/api/v5/account/positions-history",
+    { query },
+  );
+  const out: ClosedPositionRow[] = [];
+  for (const r of rows) {
+    const uTime = r.uTime ? parseInt(r.uTime, 10) : 0;
+    if (args.afterMs && uTime < args.afterMs) continue;
+    const rp = r.realizedPnl ?? r.pnl;
+    out.push({
+      instId: r.instId,
+      realizedPnl: rp != null && rp !== "" ? num(rp) : null,
+      closeAvgPx: r.closeAvgPx && r.closeAvgPx !== "" ? num(r.closeAvgPx) : null,
+      closeTotalPos: num(r.closeTotalPos),
+      uTime,
+      cTime: r.cTime ? parseInt(r.cTime, 10) : 0,
+    });
+  }
+  return out;
+}
+
+export type AlgoHistoryRow = {
+  algoId: string;
+  algoClOrdId: string | null;
+  state: string;
+  actualSide: string | null;
+};
+
+export async function fetchAlgoOrderHistoryByAlgoId(
+  algoId: string,
+): Promise<AlgoHistoryRow | null> {
+  type Row = {
+    algoId: string;
+    algoClOrdId?: string;
+    state: string;
+    actualSide?: string;
+  };
+  // state filter is required by OKX. "effective" = triggered/filled.
+  const queryState = async (state: string) => {
+    try {
+      return await okxRequest<Row[]>(
+        "GET",
+        "/api/v5/trade/orders-algo-history",
+        { query: { instType: "SWAP", algoId, state } },
+      );
+    } catch (e) {
+      logger.warn({ err: e, algoId, state }, "orders-algo-history fetch failed");
+      return [] as Row[];
+    }
+  };
+  const [eff, can] = await Promise.all([queryState("effective"), queryState("canceled")]);
+  const row = eff[0] ?? can[0];
+  if (!row) return null;
+  return {
+    algoId: row.algoId,
+    algoClOrdId: row.algoClOrdId && row.algoClOrdId !== "" ? row.algoClOrdId : null,
+    state: row.state,
+    actualSide: row.actualSide ?? null,
+  };
+}
+
 export async function fetchAccountSummary(): Promise<{
   totalEquityUsd: number;
   assetCount: number;

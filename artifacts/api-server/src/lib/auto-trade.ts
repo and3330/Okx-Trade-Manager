@@ -17,9 +17,12 @@ import {
   fetchAtr,
   fetchPendingAlgoOrders,
   amendAlgoSlTrigger,
+  fetchPositionsHistory,
+  fetchAlgoOrderHistoryByAlgoId,
   type AccountBalanceData,
   type PerpPositionData,
 } from "./okx";
+import type { AutoTradeExecution } from "@workspace/db";
 import { and, isNull, isNotNull } from "drizzle-orm";
 
 const SINGLETON_ID = 1;
@@ -363,14 +366,46 @@ async function processInstrument(args: {
       const ticker = await fetchTicker(instId).catch(() => null);
       const closePx = ticker?.last ?? null;
       const realized = closePx != null ? existingPos.unrealizedPnlUsd : null;
+
+      // If we have a matching open execution row (engine-opened), update it in place so
+      // the trailing tick won't also reconcile it as an external close (would double-count PnL).
+      const existingOpen = await db
+        .select({ id: autoTradeExecutionsTable.id })
+        .from(autoTradeExecutionsTable)
+        .where(
+          and(
+            eq(autoTradeExecutionsTable.instId, instId),
+            eq(autoTradeExecutionsTable.status, "submitted"),
+            isNull(autoTradeExecutionsTable.closedAt),
+          ),
+        )
+        .orderBy(desc(autoTradeExecutionsTable.id))
+        .limit(1);
+
+      if (existingOpen.length > 0) {
+        await db
+          .update(autoTradeExecutionsTable)
+          .set({
+            status: "closed",
+            realizedPnlUsdt: realized != null ? String(realized) : null,
+            closePrice: closePx != null ? String(closePx) : null,
+            closedAt: new Date(),
+            closeReason: "ai",
+          })
+          .where(eq(autoTradeExecutionsTable.id, existingOpen[0]!.id));
+        return { instId, action: "executed_close", reason: null, executionId: existingOpen[0]!.id };
+      }
+
+      // No engine-opened row to attach to (e.g., user manually opened the position) — insert a new closing record.
       const [exec] = await db.insert(autoTradeExecutionsTable).values({
         decisionId, instId, side: "close",
         marginUsdt: null, leverage: null, contracts: String(Math.abs(existingPos.contracts)),
         entryPrice: String(existingPos.avgEntryPx),
-        ordId: null, status: "submitted", reason: "consensus_close",
+        ordId: null, status: "closed", reason: "consensus_close",
         realizedPnlUsdt: realized != null ? String(realized) : null,
         closePrice: closePx != null ? String(closePx) : null,
         closedAt: new Date(),
+        closeReason: "ai",
         chosenProviderId: consensus.chosenProviderId,
       }).returning({ id: autoTradeExecutionsTable.id });
       return { instId, action: "executed_close", reason: null, executionId: exec!.id };
@@ -524,6 +559,88 @@ export async function runTrailingTick(): Promise<void> {
   }
 }
 
+async function reconcileClosedExecution(row: AutoTradeExecution): Promise<void> {
+  // 1) Determine close reason. In OCO the SL/TP share one algoId, so we must use
+  //    the triggered leg's `actualSide` ("sl" or "tp") rather than which id was effective.
+  let closeReason: string | null = null;
+  try {
+    const algoIds = new Set<string>();
+    if (row.algoSlId) algoIds.add(row.algoSlId);
+    if (row.algoTpId) algoIds.add(row.algoTpId);
+    let anyLookupSucceeded = false;
+    let triggered = false;
+    for (const algoId of algoIds) {
+      const state = await fetchAlgoOrderHistoryByAlgoId(algoId);
+      if (state) anyLookupSucceeded = true;
+      if (state?.state === "effective") {
+        triggered = true;
+        if (state.actualSide === "tp") closeReason = "tp";
+        else if (state.actualSide === "sl") closeReason = "sl";
+        else closeReason = "sl"; // single-leg conditional w/o actualSide → assume SL
+        break;
+      }
+    }
+    if (!triggered && anyLookupSucceeded) closeReason = "manual";
+    // If algoIds was empty OR all lookups failed, leave closeReason null and retry next tick.
+  } catch (err) {
+    logger.warn({ err, execId: row.id }, "reconcile: algo state lookup failed");
+  }
+
+  // 2) Match the closed position by size (closeTotalPos ≈ row.contracts within 5%) within a
+  //    time window starting at our entry. Take the most recent matching row.
+  let realizedPnl: number | null = null;
+  let closePx: number | null = null;
+  let matched = false;
+  try {
+    const sinceMs = row.createdAt instanceof Date ? row.createdAt.getTime() - 60_000 : 0;
+    const history = await fetchPositionsHistory({
+      instId: row.instId,
+      afterMs: sinceMs,
+      limit: 50,
+    });
+    const ourContracts = row.contracts
+      ? Math.abs(parseFloat(row.contracts as unknown as string))
+      : 0;
+    let best: (typeof history)[number] | null = null;
+    for (const h of history) {
+      if (ourContracts > 0) {
+        const diffPct = Math.abs(h.closeTotalPos - ourContracts) / ourContracts;
+        if (diffPct > 0.05) continue;
+      }
+      if (!best || h.uTime > best.uTime) best = h;
+    }
+    if (best) {
+      realizedPnl = best.realizedPnl;
+      closePx = best.closeAvgPx;
+      matched = true;
+    }
+  } catch (err) {
+    logger.warn({ err, execId: row.id, instId: row.instId }, "reconcile: positions-history fetch failed");
+  }
+
+  // 3) Don't finalize unless we got SOMETHING usable. Otherwise retry next minute.
+  if (!matched && closeReason == null) {
+    logger.warn({ execId: row.id, instId: row.instId }, "reconcile: no data yet; will retry next tick");
+    return;
+  }
+
+  await db
+    .update(autoTradeExecutionsTable)
+    .set({
+      closedAt: new Date(),
+      status: "closed",
+      closeReason: closeReason ?? "unknown",
+      realizedPnlUsdt: realizedPnl != null ? String(realizedPnl) : row.realizedPnlUsdt,
+      closePrice: closePx != null ? String(closePx) : row.closePrice,
+    })
+    .where(eq(autoTradeExecutionsTable.id, row.id));
+
+  logger.info(
+    { execId: row.id, instId: row.instId, closeReason, realizedPnl, matched },
+    "auto-trade execution reconciled after external close",
+  );
+}
+
 async function runTrailingTickInner(): Promise<void> {
   // Pull all submitted-and-not-closed open executions that still have an algo SL we can amend.
   const open = await db
@@ -550,11 +667,8 @@ async function runTrailingTickInner(): Promise<void> {
 
     const pos = posByInst.get(row.instId);
     if (!pos || pos.contracts === 0) {
-      // Position closed externally (TP/SL hit, manual). Mark as closed so we stop polling.
-      await db
-        .update(autoTradeExecutionsTable)
-        .set({ closedAt: new Date(), status: "closed" })
-        .where(eq(autoTradeExecutionsTable.id, row.id));
+      // Position closed externally (TP/SL hit, manual). Reconcile realized PnL & reason.
+      await reconcileClosedExecution(row);
       continue;
     }
 
