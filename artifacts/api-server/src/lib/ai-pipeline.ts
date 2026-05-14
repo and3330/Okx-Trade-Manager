@@ -377,14 +377,27 @@ ${c1h}
 
 ${c15m}
 
-請用繁體中文寫一段精簡(300 字以內)的純技術觀點,只談技術面,不講基本面或情緒面。需含:
-1. 多時框趨勢結論(15m/1H/4H/1D 是否共振)。重點:若 4H 與 1H 趨勢相反,明確警告。
-2. 重要動能訊號(RSI/MACD/StochRSI 背離或突破)。
-3. 關鍵支撐壓力位(用 BB / EMA20 / Supertrend 數值)。
-4. 15m 進場時機觀察(剛突破 / 拉回中 / 等待)。
-5. 短線方向判斷(看多/看空/盤整),用一句話定調。
+請用繁體中文寫一段結構化的純技術觀點(400 字內),**禁止單邊定調方向**,必須中立呈現雙方訊號讓最終決策者自行判斷。
 
-直接給結論,不要前言、不要免責。`;
+格式必須完全照下列五段,每段標題不可省略:
+
+【看多訊號】
+列出所有支持做多的證據(例如:RSI 超賣可能反彈、MACD 底背離、跌至支撐位、StochRSI 極度超賣 K<20、4H/1H 趨勢轉多、突破 EMA20 等)。沒有就寫「無」。
+
+【看空訊號】
+列出所有支持做空的證據(例如:MACD 空頭、ADX 高位 + 下跌、跌破 EMA20、OBV 負值、4H/1H 共振空頭等)。沒有就寫「無」。
+
+【矛盾警示】
+明確指出指標衝突點。例如:「ADX 趨勢有效但 RSI 已超賣 → 可能是延續下跌,也可能是均值回歸」「4H 偏空但 1H StochRSI 極度超賣 → 隨時可能短反」「MACD hist 仍在加速但價格接近強支撐 → 動能與位置矛盾」。沒有矛盾就寫「指標一致,無顯著矛盾」。
+
+【關鍵價位】
+- 壓力(由近至遠):用 BB / EMA20 / Supertrend 實際數值
+- 支撐(由近至遠):用 BB / EMA20 / 24H 低點實際數值
+
+【市場結構】
+判斷 trending(ADX>25 + 多時框共振) / ranging(有清楚支撐壓力區間) / choppy(雜訊大、無方向)其中之一,只寫一個詞。
+
+直接給內容,不要前言、不要免責、不要在尾段加上「總結方向」。`;
   try {
     const res = await PROVIDERS[0]!.run(prompt, false);
     return res.trim() || "(技術分析失敗,請稍後再試)";
@@ -470,19 +483,25 @@ function buildPerpDecisionPrompt(args: {
   technical: string;
   sentiment: string;
   marketContextRaw: string;
+  indicatorRaw: string;
   maxMarginUsdt: number;
   maxLeverage: number;
 }): string {
-  const { instId, ticker, meta, position, heldUsdt, technical, sentiment, marketContextRaw, maxMarginUsdt, maxLeverage } = args;
+  const { instId, ticker, meta, position, heldUsdt, technical, sentiment, marketContextRaw, indicatorRaw, maxMarginUsdt, maxLeverage } = args;
   const posCtx = position
     ? `現有 ${position.posSide === "short" || position.contracts < 0 ? "空" : "多"}倉 ${Math.abs(position.contracts)} 張, 均價 ${position.avgEntryPx}, 槓桿 ${position.leverage}x, 未實現 ${position.unrealizedPnlUsd.toFixed(2)} USDT (${position.unrealizedPnlPct.toFixed(2)}%)`
     : "目前無倉位";
-  return `你是一位有紀律的合約交易員,基於以下分析師報告做最終決策。
+  return `你是一位有紀律的合約交易員,基於以下原始數據與分析師報告做**獨立**最終決策。
+
+⚠️ 重要:技術分析師的觀點僅供參考,你必須**自行檢視原始指標數值**做判斷,不要盲從技術師的方向。原始數據與技術師結論若有出入,以原始數據為準。
 
 標的: ${instId} (USDT 永續, 每張 ${meta.ctVal} ${meta.baseCcy}, 最小 ${meta.minSz} 張, 最高槓桿 ${meta.maxLeverage}x)
 最新價: ${ticker.last}
 
-【技術分析師觀點 (含 4H/1H/15m 多時框)】
+【原始技術指標數值 — 自行判讀】
+${indicatorRaw}
+
+【技術分析師整理 (中立呈現雙方訊號,僅供參考)】
 ${technical}
 
 【情緒/資金面分析師觀點】
@@ -496,16 +515,23 @@ ${marketContextRaw}
 - ${posCtx}
 
 請決定一個動作: long / short / close / hold。同時判斷市場結構 (regime):
-- "trending": 明確單向趨勢 (4H/1H 共振、ADX > 25)
-- "ranging": 區間震盪但有清楚支撐壓力 (可在區間端做反轉)
+- "trending": 明確單向趨勢 (4H/1H 共振、ADX > 25,且 RSI 未到極端)
+- "ranging": 區間震盪但有清楚支撐壓力 (可在區間端做反轉,RSI 接近超買/超賣是進場機會)
 - "choppy": 雜訊大、方向不明、無清楚結構 → 應停手
+
+判斷指引(請務必獨立思考):
+- ADX 高 + RSI 中性 → 順勢(trending,可開倉)
+- ADX 高 + RSI 已超買/超賣 + StochRSI 極端 → 趨勢動能與位置矛盾,可能是均值回歸機會,規避盲目追勢
+- ADX 低 + 有清楚支撐壓力 → ranging,在區間端反向操作
+- 多時框趨勢相反(例如 4H 空 / 1H 多) → 優先看大時框,但在小時框可逆勢取短
+- 不要因為「技術分析師說空」就跟著做空,要自己看 RSI/MACD/StochRSI 數值是否真的支持
 
 限制:
 - ${position ? `若想停利停損平倉用 close。同向加倉用 long/short。反向先 close。` : `無倉位不要回 close。`}
 - 開倉: marginUsdt > 0 且 <= ${maxMarginUsdt.toFixed(2)}。leverage 1~${maxLeverage}。
 - TP/SL 觸發價: 多單 TP > ${ticker.last}、SL < ${ticker.last};空單相反。可填 null。
 - confidence 1-10。
-- reasoning 繁體中文 2-4 句,明確說你採信技術還是情緒、為何。
+- reasoning 繁體中文 2-4 句,**必須引用至少一個原始指標數值**(例如「1H RSI 34.2 接近超賣」),說明你的判斷依據。
 - regime 必填:"trending" / "ranging" / "choppy" 三選一。choppy 時建議 action=hold。
 
 只回 JSON:
@@ -611,6 +637,7 @@ export async function runResearchPipeline(opts: RunPipelineOptions): Promise<Res
       instId, ticker, meta, position, heldUsdt,
       technical: technicalSummary, sentiment: sentimentSummary,
       marketContextRaw: contextText || "(無合約市場數據)",
+      indicatorRaw: indicatorText || "(無技術指標資料)",
       maxMarginUsdt, maxLeverage,
     });
     normalizer = (raw) =>
