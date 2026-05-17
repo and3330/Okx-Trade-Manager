@@ -33,6 +33,10 @@ type Cfg = {
   cooldownMinutes: number;
   rulesOnlyMode: boolean;
   cycleIntervalMinutes: number;
+  slPct: number;
+  tpPct: number;
+  reverseCooldownHours: number;
+  blockPyramiding: boolean;
   killUntil: string | null;
   updatedAt: string;
 };
@@ -92,6 +96,10 @@ export default function AutoTradePanel() {
           cooldownMinutes: Number(draft.cooldownMinutes),
           rulesOnlyMode: draft.rulesOnlyMode,
           cycleIntervalMinutes: Number(draft.cycleIntervalMinutes),
+          slPct: Number(draft.slPct),
+          tpPct: Number(draft.tpPct),
+          reverseCooldownHours: Number(draft.reverseCooldownHours),
+          blockPyramiding: draft.blockPyramiding,
         },
       },
       {
@@ -299,6 +307,40 @@ export default function AutoTradePanel() {
                 ? `純規則 + ${draft.cycleIntervalMinutes} 分鐘：每輪約 ${(draft.whitelist.length + (draft.scannerEnabled ? draft.scannerPickCount : 0))} 次 OKX 行情查詢，0 次 AI 呼叫`
                 : `AI 模式 + ${draft.cycleIntervalMinutes} 分鐘：每輪可能呼叫 4 個 AI 模型，注意成本`}
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-3 mt-3 space-y-3">
+          <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">止損 / 止盈 / 防洗</div>
+          <div className="grid grid-cols-2 gap-2">
+            <NumField label="止損 % (從進場價)" value={draft.slPct} step={0.5}
+              onChange={(v) => setDraft({ ...draft, slPct: v })} />
+            <NumField label="止盈 % (從進場價)" value={draft.tpPct} step={0.5}
+              onChange={(v) => setDraft({ ...draft, tpPct: v })} />
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            固定 % 止損/止盈，蓋掉 AI 和 ATR 計算。注意：止損 {draft.slPct}% × 槓桿 {draft.maxLeverage}x ≈ 保證金損失 {(draft.slPct * draft.maxLeverage).toFixed(0)}%
+          </div>
+          <div>
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">翻向冷卻（小時）</Label>
+            <Input type="number" min={0} max={48} value={draft.reverseCooldownHours}
+              onChange={(e) => setDraft({ ...draft, reverseCooldownHours: Number(e.target.value) })}
+              className="h-8 text-xs font-mono mt-1" />
+            <div className="text-[10px] text-muted-foreground mt-1">剛平掉 long 後 N 小時內不可開 short（反之亦然）。建議 4 小時。</div>
+          </div>
+          <div className="flex items-center justify-between border border-border rounded-md p-2 bg-background/40">
+            <div>
+              <div className="text-xs font-semibold">阻擋同向加碼</div>
+              <div className="text-[10px] text-muted-foreground">已有 long 倉時不再追加 long（手動加碼會讓部分止盈失效）</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDraft({ ...draft, blockPyramiding: !draft.blockPyramiding })}
+              className={cn("relative h-5 w-10 rounded-full transition-colors", draft.blockPyramiding ? "bg-[#00e59b]" : "bg-muted")}
+            >
+              <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
+                draft.blockPyramiding ? "translate-x-5" : "translate-x-0.5")} />
+            </button>
           </div>
         </div>
 

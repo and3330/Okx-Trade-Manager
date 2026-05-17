@@ -54,6 +54,10 @@ export type AutoTradeConfig = {
   cooldownMinutes: number;
   rulesOnlyMode: boolean;
   cycleIntervalMinutes: number;
+  slPct: number;
+  tpPct: number;
+  reverseCooldownHours: number;
+  blockPyramiding: boolean;
   killUntil: string | null;
   updatedAt: string;
 };
@@ -78,6 +82,10 @@ const DEFAULT_CONFIG: Omit<AutoTradeConfig, "updatedAt" | "killUntil"> = {
   cooldownMinutes: 30,
   rulesOnlyMode: false,
   cycleIntervalMinutes: 60,
+  slPct: 6,
+  tpPct: 6,
+  reverseCooldownHours: 4,
+  blockPyramiding: true,
 };
 
 function rowToConfig(row: typeof autoTradeConfigTable.$inferSelect): AutoTradeConfig {
@@ -96,6 +104,10 @@ function rowToConfig(row: typeof autoTradeConfigTable.$inferSelect): AutoTradeCo
     cooldownMinutes: row.cooldownMinutes,
     rulesOnlyMode: row.rulesOnlyMode,
     cycleIntervalMinutes: row.cycleIntervalMinutes,
+    slPct: parseFloat(row.slPct as unknown as string),
+    tpPct: parseFloat(row.tpPct as unknown as string),
+    reverseCooldownHours: row.reverseCooldownHours,
+    blockPyramiding: row.blockPyramiding,
     killUntil: row.killUntil ? row.killUntil.toISOString() : null,
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -121,6 +133,10 @@ export async function getOrCreateConfig(): Promise<AutoTradeConfig> {
     cooldownMinutes: DEFAULT_CONFIG.cooldownMinutes,
     rulesOnlyMode: DEFAULT_CONFIG.rulesOnlyMode,
     cycleIntervalMinutes: DEFAULT_CONFIG.cycleIntervalMinutes,
+    slPct: String(DEFAULT_CONFIG.slPct),
+    tpPct: String(DEFAULT_CONFIG.tpPct),
+    reverseCooldownHours: DEFAULT_CONFIG.reverseCooldownHours,
+    blockPyramiding: DEFAULT_CONFIG.blockPyramiding,
   }).onConflictDoNothing();
   const after = await db.select().from(autoTradeConfigTable).where(eq(autoTradeConfigTable.id, SINGLETON_ID)).limit(1);
   return rowToConfig(after[0]!);
@@ -141,6 +157,10 @@ export type ConfigPatch = {
   cooldownMinutes?: number | null;
   rulesOnlyMode?: boolean | null;
   cycleIntervalMinutes?: number | null;
+  slPct?: number | null;
+  tpPct?: number | null;
+  reverseCooldownHours?: number | null;
+  blockPyramiding?: boolean | null;
 };
 
 export async function updateConfig(patch: ConfigPatch): Promise<AutoTradeConfig> {
@@ -171,6 +191,10 @@ export async function updateConfig(patch: ConfigPatch): Promise<AutoTradeConfig>
     const v = patch.cycleIntervalMinutes;
     update["cycleIntervalMinutes"] = allowed.reduce((best, a) => Math.abs(a - v) < Math.abs(best - v) ? a : best, 60);
   }
+  if (patch.slPct != null) update["slPct"] = String(Math.max(0.5, Math.min(20, patch.slPct)));
+  if (patch.tpPct != null) update["tpPct"] = String(Math.max(0.5, Math.min(50, patch.tpPct)));
+  if (patch.reverseCooldownHours != null) update["reverseCooldownHours"] = Math.max(0, Math.min(48, patch.reverseCooldownHours));
+  if (patch.blockPyramiding != null) update["blockPyramiding"] = patch.blockPyramiding;
   // If user re-enables, clear any stale killUntil
   if (patch.enabled === true) update["killUntil"] = null;
   const [row] = await db.update(autoTradeConfigTable).set(update).where(eq(autoTradeConfigTable.id, SINGLETON_ID)).returning();
@@ -247,6 +271,25 @@ async function inCooldown(instId: string, cooldownMin: number): Promise<boolean>
     .where(sql`${autoTradeExecutionsTable.instId} = ${instId} AND ${autoTradeExecutionsTable.createdAt} >= ${since.toISOString()}`)
     .limit(1);
   return recent.length > 0;
+}
+
+// Reverse-direction cooldown: if the most recent CLOSED trade on this instId was opposite
+// side and happened within `hours`, block the new open. Prevents the engine from immediately
+// flipping (close-long-then-open-short) during chop, which was a documented loss pattern.
+async function inReverseCooldown(instId: string, newSide: "long" | "short", hours: number): Promise<boolean> {
+  if (hours <= 0) return false;
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+  // Only consider directional (long/short) closed trades — engine-initiated close votes
+  // are recorded as side='close' and don't carry directional info, so we must look past them
+  // to the most recent actual directional position that's been closed.
+  const rows = await db.select({ side: autoTradeExecutionsTable.side, closedAt: autoTradeExecutionsTable.closedAt })
+    .from(autoTradeExecutionsTable)
+    .where(sql`${autoTradeExecutionsTable.instId} = ${instId} AND ${autoTradeExecutionsTable.status} = 'closed' AND ${autoTradeExecutionsTable.closedAt} >= ${since.toISOString()} AND ${autoTradeExecutionsTable.side} IN ('long','short')`)
+    .orderBy(desc(autoTradeExecutionsTable.closedAt))
+    .limit(1);
+  if (rows.length === 0) return false;
+  const lastSide = rows[0]!.side;
+  return (lastSide === "long" && newSide === "short") || (lastSide === "short" && newSide === "long");
 }
 
 export type RunCycleEntry = {
@@ -655,19 +698,31 @@ async function processInstrument(args: {
     return { instId, action: "skipped", reason: "cooldown", executionId: null };
   }
 
+  // Reverse-direction cooldown: don't flip sides on same instId within N hours.
+  // Pure chop protection — if we just closed a long, a short signal in the next 4h is
+  // almost certainly noise on the same range.
+  const proposedSide = consensus.action as "long" | "short";
+  if (await inReverseCooldown(instId, proposedSide, cfg.reverseCooldownHours)) {
+    return { instId, action: "skipped", reason: `reverse_cooldown ${cfg.reverseCooldownHours}h`, executionId: null };
+  }
+
   // Open action — but cap concurrent positions
   if (!existingPos && openCount >= cfg.maxConcurrentPositions) {
     return { instId, action: "skipped", reason: `max_positions ${openCount}/${cfg.maxConcurrentPositions}`, executionId: null };
   }
-  // If existing position is opposite side, skip (would need close first; we did not consensus-close, so abstain)
+  // Existing position handling: reject add-on (pyramiding) when enabled, since it breaks
+  // partial-TP1 half-fill detection. Opposite side has to be closed first via consensus.
   if (existingPos) {
     const existingSide = existingPos.posSide === "short" || existingPos.contracts < 0 ? "short" : "long";
     if (existingSide !== consensus.action) {
       return { instId, action: "skipped", reason: `opposite_position_open (${existingSide})`, executionId: null };
     }
+    if (cfg.blockPyramiding) {
+      return { instId, action: "skipped", reason: `pyramiding_blocked (already ${existingSide})`, executionId: null };
+    }
   }
 
-  const side = consensus.action as "long" | "short";
+  const side = proposedSide;
 
   // ── Strategy hard gate (Minervini + Qullamaggie + Schwartz, crypto-adjusted) ──
   // Even if AI consensus says "long", we refuse to trade if any 禁止 rule fires:
@@ -723,15 +778,16 @@ async function processInstrument(args: {
   const effectiveMaxLev = Math.min(cfg.maxLeverage, scoreLevCap, volLevCap, liqLevCap);
   const leverage = Math.max(1, Math.min(consensus.medianLeverage ?? effectiveMaxLev, effectiveMaxLev));
 
-  // Force SL via tiered ATR multiplier if not provided. Reuse pipeline.atr1H
-  // (already fetched in Stage 0) to avoid a second API call that could fail.
-  let stopLossPrice = consensus.medianStopLossPrice;
-  if (stopLossPrice == null) {
-    const atr = pipeline.atr1H ?? (await fetchAtr(instId, "1H"));
-    if (atr != null && atr > 0 && pipeline.lastPrice > 0) {
-      stopLossPrice = side === "long" ? pipeline.lastPrice - atr * atrMult : pipeline.lastPrice + atr * atrMult;
-    }
-  }
+  // Fixed-percent SL (user override, 2026-05): replaces ATR-tiered SL.
+  // ATR-based SL kept getting wicked in choppy markets ("一直碰到止損"). Per-user
+  // request, use a flat % from entry — predictable, easier to reason about.
+  // Note: still intersect with liquidation-buffer leverage cap above (atrMult-based)
+  // because that calc uses ATR distance for liq buffer; with flat 6% SL we instead
+  // cap leverage so SL fires before liquidation with ≥40% room.
+  const slDistPct = cfg.slPct / 100;
+  let stopLossPrice = side === "long"
+    ? pipeline.lastPrice * (1 - slDistPct)
+    : pipeline.lastPrice * (1 + slDistPct);
   // Sanity check SL: must exist, be positive, and on the correct side of entry with non-trivial distance (>=0.1%).
   if (stopLossPrice == null || stopLossPrice <= 0) {
     return { instId, action: "skipped", reason: "no_stop_loss_available", executionId: null };
@@ -744,18 +800,11 @@ async function processInstrument(args: {
     return { instId, action: "skipped", reason: `invalid_sl_short sl=${stopLossPrice} px=${pipeline.lastPrice}`, executionId: null };
   }
 
-  // Force TP via confidence-tiered R:R if model didn't provide one.
-  // High conviction (avg confidence >= 9) → let profit run with 3:1; otherwise 2:1.
-  let takeProfitPrice = consensus.medianTakeProfitPrice;
-  if (takeProfitPrice == null) {
-    const slDistance = Math.abs(pipeline.lastPrice - stopLossPrice);
-    const rrRatio = consensus.avgConfidence >= 9 ? 3 : 2;
-    if (slDistance > 0) {
-      takeProfitPrice = side === "long"
-        ? pipeline.lastPrice + slDistance * rrRatio
-        : pipeline.lastPrice - slDistance * rrRatio;
-    }
-  }
+  // Fixed-percent TP (user override, 2026-05): flat % from entry, matching SL.
+  const tpDistPct = cfg.tpPct / 100;
+  let takeProfitPrice: number | null = side === "long"
+    ? pipeline.lastPrice * (1 + tpDistPct)
+    : pipeline.lastPrice * (1 - tpDistPct);
   // Sanity check TP: must be on profit side with non-trivial distance.
   if (takeProfitPrice != null) {
     const tp = takeProfitPrice;

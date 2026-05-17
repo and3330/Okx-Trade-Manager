@@ -890,11 +890,14 @@ export function decideByRules(
 ): RuleDecision | null {
   const longScore = longC && longC.hardBlocks.length === 0 ? longC.score : -1;
   const shortScore = shortC && shortC.hardBlocks.length === 0 ? shortC.score : -1;
-  const longEligible = longScore >= 5;
-  const shortEligible = shortScore >= 5;
+  // Tightened (2026-05): score 5 + gap 2 was firing on weak crosses in choppy markets,
+  // causing the engine to flip direction every cycle (HYPE: short→short→long→long×7).
+  // Now require score ≥ 6 (strong resonance) AND gap ≥ 3 (clearly dominant side).
+  const longEligible = longScore >= 6;
+  const shortEligible = shortScore >= 6;
   if (longEligible && shortEligible) return null; // rare but defensive — let AI decide
-  const scoreToConfidence = (s: number) => (s >= 7 ? 9 : s === 6 ? 8 : 7);
-  if (longEligible && longScore - shortScore >= 2) {
+  const scoreToConfidence = (s: number) => (s >= 7 ? 9 : 8);
+  if (longEligible && longScore - shortScore >= 3) {
     return {
       side: "long",
       score: longScore,
@@ -902,7 +905,7 @@ export function decideByRules(
       reasoning: `規則直接判定: 多方共振 ${longScore}/7, 空方 ${Math.max(0, shortScore)}/7 — AI 未呼叫`,
     };
   }
-  if (shortEligible && shortScore - longScore >= 2) {
+  if (shortEligible && shortScore - longScore >= 3) {
     return {
       side: "short",
       score: shortScore,

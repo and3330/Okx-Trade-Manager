@@ -21,6 +21,10 @@ export interface AutoTradeConfig {
   cooldownMinutes: number;
   rulesOnlyMode: boolean;
   cycleIntervalMinutes: number;
+  slPct: number;
+  tpPct: number;
+  reverseCooldownHours: number;
+  blockPyramiding: boolean;
   /** @nullable */
   killUntil?: string | null;
   updatedAt: string;

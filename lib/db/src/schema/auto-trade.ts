@@ -30,6 +30,10 @@ export const autoTradeConfigTable = pgTable("auto_trade_config", {
   cooldownMinutes: integer("cooldown_minutes").notNull().default(30),
   rulesOnlyMode: boolean("rules_only_mode").notNull().default(false),
   cycleIntervalMinutes: integer("cycle_interval_minutes").notNull().default(60),
+  slPct: numeric("sl_pct").notNull().default("6"),
+  tpPct: numeric("tp_pct").notNull().default("6"),
+  reverseCooldownHours: integer("reverse_cooldown_hours").notNull().default(4),
+  blockPyramiding: boolean("block_pyramiding").notNull().default(true),
   killUntil: timestamp("kill_until", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

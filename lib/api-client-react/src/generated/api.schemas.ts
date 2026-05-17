@@ -428,6 +428,10 @@ export interface AutoTradeConfig {
   cooldownMinutes: number;
   rulesOnlyMode: boolean;
   cycleIntervalMinutes: number;
+  slPct: number;
+  tpPct: number;
+  reverseCooldownHours: number;
+  blockPyramiding: boolean;
   /** @nullable */
   killUntil?: string | null;
   updatedAt: string;
@@ -462,6 +466,14 @@ export interface AutoTradeConfigInput {
   rulesOnlyMode?: boolean | null;
   /** @nullable */
   cycleIntervalMinutes?: number | null;
+  /** @nullable */
+  slPct?: number | null;
+  /** @nullable */
+  tpPct?: number | null;
+  /** @nullable */
+  reverseCooldownHours?: number | null;
+  /** @nullable */
+  blockPyramiding?: boolean | null;
 }
 
 export interface AutoTradeStatus {

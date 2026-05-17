@@ -35,4 +35,12 @@ export interface AutoTradeConfigInput {
   rulesOnlyMode?: boolean | null;
   /** @nullable */
   cycleIntervalMinutes?: number | null;
+  /** @nullable */
+  slPct?: number | null;
+  /** @nullable */
+  tpPct?: number | null;
+  /** @nullable */
+  reverseCooldownHours?: number | null;
+  /** @nullable */
+  blockPyramiding?: boolean | null;
 }

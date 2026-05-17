@@ -450,6 +450,10 @@ export const GetAutoTradeConfigResponse = zod.object({
   cooldownMinutes: zod.number(),
   rulesOnlyMode: zod.boolean(),
   cycleIntervalMinutes: zod.number(),
+  slPct: zod.number(),
+  tpPct: zod.number(),
+  reverseCooldownHours: zod.number(),
+  blockPyramiding: zod.boolean(),
   killUntil: zod.string().nullish(),
   updatedAt: zod.string(),
 });
@@ -472,6 +476,10 @@ export const UpdateAutoTradeConfigBody = zod.object({
   cooldownMinutes: zod.number().nullish(),
   rulesOnlyMode: zod.boolean().nullish(),
   cycleIntervalMinutes: zod.number().nullish(),
+  slPct: zod.number().nullish(),
+  tpPct: zod.number().nullish(),
+  reverseCooldownHours: zod.number().nullish(),
+  blockPyramiding: zod.boolean().nullish(),
 });
 
 export const UpdateAutoTradeConfigResponse = zod.object({
@@ -489,6 +497,10 @@ export const UpdateAutoTradeConfigResponse = zod.object({
   cooldownMinutes: zod.number(),
   rulesOnlyMode: zod.boolean(),
   cycleIntervalMinutes: zod.number(),
+  slPct: zod.number(),
+  tpPct: zod.number(),
+  reverseCooldownHours: zod.number(),
+  blockPyramiding: zod.boolean(),
   killUntil: zod.string().nullish(),
   updatedAt: zod.string(),
 });
