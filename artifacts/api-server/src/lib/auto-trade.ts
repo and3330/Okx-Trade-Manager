@@ -83,7 +83,7 @@ const DEFAULT_CONFIG: Omit<AutoTradeConfig, "updatedAt" | "killUntil"> = {
   rulesOnlyMode: false,
   cycleIntervalMinutes: 60,
   slPct: 6,
-  tpPct: 6,
+  tpPct: 10,
   reverseCooldownHours: 4,
   blockPyramiding: true,
 };
