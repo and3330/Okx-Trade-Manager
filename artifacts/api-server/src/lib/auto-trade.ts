@@ -31,6 +31,7 @@ import {
   fetchAlgoOrderHistoryByAlgoId,
   fetchPerpInstrument,
   placeStandaloneReduceOnlyAlgo,
+  cancelAlgos,
   type AccountBalanceData,
   type PerpPositionData,
 } from "./okx";
@@ -665,6 +666,8 @@ async function processInstrument(args: {
             closeReason: "ai",
           })
           .where(eq(autoTradeExecutionsTable.id, openRow.id));
+        // Clean up any leftover SL/TP/TP1 algos so they can't fire against a future position.
+        await cancelExecutionAlgos(openRow);
         return { instId, action: "executed_close", reason: null, executionId: openRow.id };
       }
       const realized = baseRealized;
@@ -992,6 +995,26 @@ async function detectPartialTp1Fill(row: AutoTradeExecution, pos: PerpPositionDa
   }
 }
 
+// Cancel any leftover algo orders attached to an execution row (SL, TP, TP1).
+// Safe to call multiple times — OKX silently no-ops on already-cancelled / non-existent ids.
+// Used after any close path (AI close, reconcile, manual detection) to prevent orphan algos
+// from triggering against future positions.
+async function cancelExecutionAlgos(row: { instId: string; algoSlId: string | null; algoTpId: string | null; algoTp1Id: string | null }): Promise<void> {
+  const items: { instId: string; algoId: string }[] = [];
+  const seen = new Set<string>();
+  for (const id of [row.algoSlId, row.algoTpId, row.algoTp1Id]) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    items.push({ instId: row.instId, algoId: id });
+  }
+  if (items.length === 0) return;
+  try {
+    await cancelAlgos(items);
+  } catch (err) {
+    logger.warn({ err, instId: row.instId, algoIds: items.map((i) => i.algoId) }, "cancelExecutionAlgos failed (leftover algos may remain)");
+  }
+}
+
 async function reconcileClosedExecution(row: AutoTradeExecution): Promise<void> {
   // 1) Determine close reason. In OCO the SL/TP share one algoId, so we must use
   //    the triggered leg's `actualSide` ("sl" or "tp") rather than which id was effective.
@@ -1079,6 +1102,10 @@ async function reconcileClosedExecution(row: AutoTradeExecution): Promise<void> 
       closePrice: closePx != null ? String(closePx) : row.closePrice,
     })
     .where(eq(autoTradeExecutionsTable.id, row.id));
+
+  // Cancel any remaining algo orders (e.g. TP1 left after OCO triggered, or surviving SL/TP
+  // when reconcile reason is "manual"). Prevents orphan algos firing against future positions.
+  await cancelExecutionAlgos(row);
 
   logger.info(
     { execId: row.id, instId: row.instId, closeReason, realizedPnl, matched },
