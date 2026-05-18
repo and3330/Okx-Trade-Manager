@@ -902,17 +902,12 @@ async function processInstrument(args: {
         logger.warn({ instId, algoClOrdId }, "could not locate attached algo; trailing disabled for this trade");
       }
     }
-    // Partial TP (T006): place a standalone reduce-only TP1 algo on ~50% of contracts at +1.5R.
-    // Best-effort — failure here doesn't roll back the trade (the attached OCO still fully protects).
-    //
-    // Skip TP1 entirely on add-on entries (existingPos same-side). The TP1-fill detection in
-    // trailing tick compares live position size to ~half of THIS order's contracts, but on an
-    // add-on the live size would be (existing + new) and the half-comparison would never match,
-    // so TP1 would silently never be recorded. Disabling it here keeps reconciliation honest.
+    // Partial TP (T006) DISABLED 2026-05 per user: confusing to see two SL/TP rows per
+    // position in OKX app, and the half-then-half logic adds noise without clear benefit.
+    // Now every trade gets exactly one attached OCO (full size SL + TP). Code kept for
+    // possible future re-enable via a config flag.
     let capturedAlgoTp1Id: string | null = null;
-    if (existingPos) {
-      logger.info({ instId }, "partial-TP1 skipped (add-on entry; pyramiding incompatible with half-fill detection)");
-    } else try {
+    if (false) try {
       const meta = await fetchPerpInstrument(instId);
       const lotSz = meta.lotSz > 0 ? meta.lotSz : 1;
       const minSz = meta.minSz > 0 ? meta.minSz : 1;
