@@ -811,13 +811,11 @@ async function processInstrument(args: {
   const effectiveMaxLev = Math.min(cfg.maxLeverage, scoreLevCap, volLevCap, liqLevCap);
   const leverage = Math.max(1, Math.min(consensus.medianLeverage ?? effectiveMaxLev, effectiveMaxLev));
 
-  // Fixed-percent SL (user override, 2026-05): replaces ATR-tiered SL.
-  // ATR-based SL kept getting wicked in choppy markets ("一直碰到止損"). Per-user
-  // request, use a flat % from entry — predictable, easier to reason about.
-  // Note: still intersect with liquidation-buffer leverage cap above (atrMult-based)
-  // because that calc uses ATR distance for liq buffer; with flat 6% SL we instead
-  // cap leverage so SL fires before liquidation with ≥40% room.
-  const slDistPct = cfg.slPct / 100;
+  // Fixed-percent SL/TP (user override, 2026-05): MARGIN-based, not price-based.
+  // cfg.slPct=10 + leverage=5 means: stop when margin loss hits 10% of deposit,
+  // i.e. price moves 10/5 = 2%. This is what users intuitively want — "lose $10
+  // on my $100 margin → close". The conversion is slPct% / leverage = price move %.
+  const slDistPct = (cfg.slPct / 100) / leverage;
   let stopLossPrice = side === "long"
     ? pipeline.lastPrice * (1 - slDistPct)
     : pipeline.lastPrice * (1 + slDistPct);
@@ -833,8 +831,8 @@ async function processInstrument(args: {
     return { instId, action: "skipped", reason: `invalid_sl_short sl=${stopLossPrice} px=${pipeline.lastPrice}`, executionId: null };
   }
 
-  // Fixed-percent TP (user override, 2026-05): flat % from entry, matching SL.
-  const tpDistPct = cfg.tpPct / 100;
+  // Fixed-percent TP: same margin-based math as SL above.
+  const tpDistPct = (cfg.tpPct / 100) / leverage;
   let takeProfitPrice: number | null = side === "long"
     ? pipeline.lastPrice * (1 + tpDistPct)
     : pipeline.lastPrice * (1 - tpDistPct);

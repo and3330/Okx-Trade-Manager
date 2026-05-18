@@ -32,8 +32,10 @@ const router: IRouter = Router();
 router.post("/okx/auto/rebuild-algos", async (req, res): Promise<void> => {
   try {
     const cfg = await getOrCreateConfig();
-    const slPct = cfg.slPct / 100;
-    const tpPct = cfg.tpPct / 100;
+    // slPct/tpPct are MARGIN-based; divide by each position's leverage to get the
+    // actual price-move %. Falls back to maxLeverage (config) if position has no leverage.
+    const slMarginPct = cfg.slPct / 100;
+    const tpMarginPct = cfg.tpPct / 100;
     const positions = await fetchPerpPositions();
     const results: Array<{
       instId: string;
@@ -61,6 +63,9 @@ router.post("/okx/auto/rebuild-algos", async (req, res): Promise<void> => {
       const size = Math.abs(p.contracts);
       if (size <= 0) continue;
 
+      const lev = p.leverage > 0 ? p.leverage : cfg.maxLeverage;
+      const slPct = slMarginPct / lev;
+      const tpPct = tpMarginPct / lev;
       const sl = posSide === "long" ? p.markPx * (1 - slPct) : p.markPx * (1 + slPct);
       const tp = posSide === "long" ? p.markPx * (1 + tpPct) : p.markPx * (1 - tpPct);
       const clOrdId = `rb${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.slice(0, 32);

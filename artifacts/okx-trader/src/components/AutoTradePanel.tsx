@@ -313,13 +313,13 @@ export default function AutoTradePanel() {
         <div className="border-t border-border pt-3 mt-3 space-y-3">
           <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">止損 / 止盈 / 防洗</div>
           <div className="grid grid-cols-2 gap-2">
-            <NumField label="止損 % (從進場價)" value={draft.slPct} step={0.5}
+            <NumField label="止損 % (保證金)" value={draft.slPct} step={0.5}
               onChange={(v) => setDraft({ ...draft, slPct: v })} />
-            <NumField label="止盈 % (從進場價)" value={draft.tpPct} step={0.5}
+            <NumField label="止盈 % (保證金)" value={draft.tpPct} step={0.5}
               onChange={(v) => setDraft({ ...draft, tpPct: v })} />
           </div>
           <div className="text-[10px] text-muted-foreground">
-            固定 % 止損/止盈，蓋掉 AI 和 ATR 計算。注意：止損 {draft.slPct}% × 槓桿 {draft.maxLeverage}x ≈ 保證金損失 {(draft.slPct * draft.maxLeverage).toFixed(0)}%
+            保證金虧 {draft.slPct}% 停損 / 賺 {draft.tpPct}% 停利。例：$100 保證金、{draft.maxLeverage}x → 價格只要動 {(draft.slPct / draft.maxLeverage).toFixed(2)}% 就觸發止損（虧 ${draft.slPct.toFixed(1)}）、動 {(draft.tpPct / draft.maxLeverage).toFixed(2)}% 觸發止盈（賺 ${draft.tpPct.toFixed(1)}）
           </div>
           <div>
             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">翻向冷卻（小時）</Label>
