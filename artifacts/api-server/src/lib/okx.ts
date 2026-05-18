@@ -996,6 +996,17 @@ export async function placeStandaloneReduceOnlyAlgo(
   return { algoId: r.algoId };
 }
 
+/** Cancel one or more pending algo orders. */
+export async function cancelAlgos(items: { instId: string; algoId: string }[]): Promise<void> {
+  if (items.length === 0) return;
+  // OKX accepts up to 10 per call.
+  for (let i = 0; i < items.length; i += 10) {
+    const batch = items.slice(i, i + 10);
+    type Row = { algoId: string; sCode: string; sMsg: string };
+    await okxRequest<Row[]>("POST", "/api/v5/trade/cancel-algos", { body: batch });
+  }
+}
+
 export type ClosedPositionRow = {
   instId: string;
   realizedPnl: number | null;
