@@ -763,7 +763,9 @@ export function scoreSizeMultiplier(score: number): number {
 
 // Suggested max leverage by score (from strategy doc)
 export function scoreMaxLeverage(score: number): number {
-  if (score >= 7) return 10;
+  // 2026-05 user override: relaxed from score>=7→10x to score>=6→10x so that
+  // standard-open signals (rules path requires score>=6) can use full leverage.
+  if (score >= 6) return 10;
   if (score >= 5) return 5;
   if (score >= 3) return 3;
   return 1;
