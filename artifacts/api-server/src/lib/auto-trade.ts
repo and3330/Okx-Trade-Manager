@@ -40,6 +40,11 @@ import { and, isNull, isNotNull } from "drizzle-orm";
 
 const SINGLETON_ID = 1;
 
+// F3 (2026-05): minimum hold time before AI is allowed to close an engine-opened position.
+// At 60min cycles AI was flipping its mind on small moves and bleeding $1-2 per cycle.
+// 240 min = 4h gives SL/TP a real window to fire.
+const MIN_HOLD_MINUTES = 240;
+
 export type AutoTradeConfig = {
   enabled: boolean;
   whitelist: string[];
@@ -625,6 +630,31 @@ async function processInstrument(args: {
   // Close action
   if (consensus.action === "close") {
     if (!existingPos) return { instId, action: "skipped", reason: "no_position_to_close", executionId: null };
+
+    // F3 (2026-05): minimum hold time. Prevent "AI flip-flop" — opening a position then
+    // closing it 1 hour later for a tiny loss before SL/TP has any chance to work.
+    // Applies only to engine-opened positions; manually-opened ones get closed immediately.
+    // Use the OLDEST submitted row for this instId so add-on (pyramiding) entries don't
+    // reset the min-hold clock on a mature core position.
+    const oldestOpen = await db
+      .select({ id: autoTradeExecutionsTable.id, createdAt: autoTradeExecutionsTable.createdAt })
+      .from(autoTradeExecutionsTable)
+      .where(
+        and(
+          eq(autoTradeExecutionsTable.instId, instId),
+          eq(autoTradeExecutionsTable.status, "submitted"),
+          isNull(autoTradeExecutionsTable.closedAt),
+        ),
+      )
+      .orderBy(autoTradeExecutionsTable.id)
+      .limit(1);
+    if (oldestOpen.length > 0 && oldestOpen[0]!.createdAt) {
+      const ageMin = (Date.now() - oldestOpen[0]!.createdAt.getTime()) / 60_000;
+      if (ageMin < MIN_HOLD_MINUTES) {
+        return { instId, action: "skipped", reason: `min_hold ${Math.round(ageMin)}/${MIN_HOLD_MINUTES}m (let SL/TP work)`, executionId: null };
+      }
+    }
+
     try {
       await closePerpPosition({ instId });
       const ticker = await fetchTicker(instId).catch(() => null);
@@ -826,10 +856,15 @@ async function processInstrument(args: {
       algoClOrdId: stopLossPrice != null || takeProfitPrice != null ? algoClOrdId : null,
     });
     // Match the algo we just attached by algoClOrdId. Bounded retry handles eventual consistency.
+    // F1 (2026-05): bumped to 8×750ms=6s total (was 4×400ms=1.6s) — OKX algo listing was
+    // taking longer than 1.6s to surface attached algos, producing rows with algoSlId=NULL
+    // and no trailing/reconcile path. Added fallback: if algoClOrdId match fails, take the
+    // most-recent pending algo for this instId+posSide with both slTrigger and tpTrigger set
+    // (i.e. the attached OCO from this very order).
     let capturedAlgoSlId: string | null = null;
     let capturedAlgoTpId: string | null = null;
     if (stopLossPrice != null || takeProfitPrice != null) {
-      for (let attempt = 0; attempt < 4; attempt++) {
+      for (let attempt = 0; attempt < 8; attempt++) {
         try {
           const algos = await fetchPendingAlgoOrders(instId);
           const ours = algos.find((a) => a.algoClOrdId === algoClOrdId);
@@ -841,10 +876,32 @@ async function processInstrument(args: {
         } catch (e) {
           logger.warn({ err: e, instId, attempt }, "fetch algo IDs attempt failed");
         }
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, 750));
       }
       if (!capturedAlgoSlId) {
-        logger.warn({ instId, algoClOrdId }, "could not locate attached algo by client ID; trailing disabled for this trade");
+        // Fallback: grab the newest pending OCO for this instId+side. Safe because this code
+        // runs immediately after our own order — any matching OCO is overwhelmingly likely ours.
+        try {
+          const algos = await fetchPendingAlgoOrders(instId);
+          const candidates = algos.filter((a) =>
+            a.slTriggerPx != null &&
+            a.tpTriggerPx != null &&
+            // posSide null = net mode; both directions go on same posSide so accept null too
+            (a.posSide == null || a.posSide === side),
+          );
+          if (candidates.length > 0) {
+            // Latest by algoId (lexicographic id is monotonic-enough for our window)
+            const latest = candidates.sort((a, b) => b.algoId.localeCompare(a.algoId))[0]!;
+            capturedAlgoSlId = latest.algoId;
+            capturedAlgoTpId = latest.algoId;
+            logger.info({ instId, algoId: latest.algoId }, "algo captured via fallback (instId+side scan)");
+          }
+        } catch (e) {
+          logger.warn({ err: e, instId }, "fallback algo lookup failed");
+        }
+      }
+      if (!capturedAlgoSlId) {
+        logger.warn({ instId, algoClOrdId }, "could not locate attached algo; trailing disabled for this trade");
       }
     }
     // Partial TP (T006): place a standalone reduce-only TP1 algo on ~50% of contracts at +1.5R.
@@ -1114,7 +1171,10 @@ async function reconcileClosedExecution(row: AutoTradeExecution): Promise<void> 
 }
 
 async function runTrailingTickInner(): Promise<void> {
-  // Pull all submitted-and-not-closed open executions that still have an algo SL we can amend.
+  // Pull all submitted-and-not-closed open executions.
+  // F2 (2026-05): dropped isNotNull(algoSlId) — rows without captured algo still need reconcile
+  // when their OKX position disappears, otherwise they become zombies forever. Trailing amend
+  // is now guarded with a null check inside the loop.
   const open = await db
     .select()
     .from(autoTradeExecutionsTable)
@@ -1122,9 +1182,6 @@ async function runTrailingTickInner(): Promise<void> {
       and(
         eq(autoTradeExecutionsTable.status, "submitted"),
         isNull(autoTradeExecutionsTable.closedAt),
-        isNotNull(autoTradeExecutionsTable.algoSlId),
-        isNotNull(autoTradeExecutionsTable.entryPrice),
-        isNotNull(autoTradeExecutionsTable.initialSlPrice),
       ),
     );
   if (open.length === 0) return;
@@ -1175,11 +1232,14 @@ async function runTrailingTickInner(): Promise<void> {
     }
 
     if (targetSl == null || targetStage === stage) continue;
+    // F2: trailing requires an algoSlId to amend. Rows without it still got reconciled
+    // above when position disappeared; here we just skip trailing.
+    if (!row.algoSlId) continue;
 
     try {
       await amendAlgoSlTrigger({
         instId: row.instId,
-        algoId: row.algoSlId!,
+        algoId: row.algoSlId,
         newSlTriggerPx: targetSl,
       });
       // Conditional update: only advance if stage hasn't moved underneath us.

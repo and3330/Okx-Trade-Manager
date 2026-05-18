@@ -16,6 +16,8 @@ import {
   placeStandaloneReduceOnlyAlgo,
   cancelAlgos,
 } from "../lib/okx";
+import { db, autoTradeExecutionsTable } from "@workspace/db";
+import { and, eq, isNull, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -99,6 +101,55 @@ router.post("/okx/auto/rebuild-algos", async (req, res): Promise<void> => {
     req.log.info({ count: results.length, ok: results.filter((r) => !r.error).length }, "rebuild-algos completed");
     res.json({ slPct: cfg.slPct, tpPct: cfg.tpPct, results });
   } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/**
+ * One-shot: clean up "zombie" submitted rows that have no corresponding OKX position.
+ * This happens when SL/TP closes a position but the row never got reconciled
+ * (pre-F1/F2 fix: rows missing algoSlId were excluded from reconcile loop).
+ * Marks every submitted row for an instId without a live position as 'closed' / 'zombie_cleanup'.
+ */
+router.post("/okx/auto/cleanup-zombies", async (req, res): Promise<void> => {
+  try {
+    const positions = await fetchPerpPositions();
+    const liveInstIds = positions
+      .filter((p) => p.contracts !== 0)
+      .map((p) => p.instId);
+
+    const allOpen = await db
+      .select({ id: autoTradeExecutionsTable.id, instId: autoTradeExecutionsTable.instId })
+      .from(autoTradeExecutionsTable)
+      .where(
+        and(
+          eq(autoTradeExecutionsTable.status, "submitted"),
+          isNull(autoTradeExecutionsTable.closedAt),
+        ),
+      );
+
+    const zombies = allOpen.filter((r) => !liveInstIds.includes(r.instId));
+    if (zombies.length === 0) {
+      res.json({ cleaned: 0, liveInstIds, message: "no zombies found" });
+      return;
+    }
+
+    const zombieIds = zombies.map((z) => z.id);
+    const now = new Date();
+    await db
+      .update(autoTradeExecutionsTable)
+      .set({
+        status: "closed",
+        closedAt: now,
+        closeReason: "zombie_cleanup",
+        realizedPnlUsdt: "0",
+      })
+      .where(inArray(autoTradeExecutionsTable.id, zombieIds));
+
+    req.log.info({ cleaned: zombieIds.length, liveInstIds }, "zombie cleanup complete");
+    res.json({ cleaned: zombieIds.length, liveInstIds, zombieInstIds: [...new Set(zombies.map((z) => z.instId))] });
+  } catch (err) {
+    req.log.error({ err }, "cleanup-zombies failed");
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
