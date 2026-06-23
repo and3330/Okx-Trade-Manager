@@ -1,1 +1,3 @@
 - [TradingView embed limits](tradingview-embed-limits.md) — free embeds cannot show Taiwan TWSE data (licensing); US/crypto fine; use official TWSE API for real TW data.
+- [market-monitor product](market-monitor-product.md) — 2nd product; TradingView webhook signals, singleton settings passphrase, market enum tw|us|crypto, TWSE notice deliberate.
+- [TradingView embed limits](tradingview-embed-limits.md) — TWSE blocked in free TradingView embeds; needs official TWSE data source.

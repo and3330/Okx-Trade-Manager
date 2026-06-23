@@ -5,6 +5,78 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type WatchlistItemMarket =
+  (typeof WatchlistItemMarket)[keyof typeof WatchlistItemMarket];
+
+export const WatchlistItemMarket = {
+  tw: "tw",
+  us: "us",
+  crypto: "crypto",
+} as const;
+
+export interface WatchlistItem {
+  id: number;
+  symbol: string;
+  market: WatchlistItemMarket;
+  displayName: string;
+  /** @nullable */
+  note?: string | null;
+  createdAt: string;
+}
+
+export type WatchlistInputMarket =
+  (typeof WatchlistInputMarket)[keyof typeof WatchlistInputMarket];
+
+export const WatchlistInputMarket = {
+  tw: "tw",
+  us: "us",
+  crypto: "crypto",
+} as const;
+
+export interface WatchlistInput {
+  symbol: string;
+  market: WatchlistInputMarket;
+  displayName: string;
+  /** @nullable */
+  note?: string | null;
+}
+
+export interface MonitorSignal {
+  id: number;
+  receivedAt: string;
+  /** @nullable */
+  symbol?: string | null;
+  /** @nullable */
+  action?: string | null;
+  /** @nullable */
+  price?: string | null;
+  /** @nullable */
+  message?: string | null;
+  source: string;
+}
+
+export interface MonitorSettings {
+  webhookPassphrase: string;
+}
+
+export interface WebhookPayload {
+  passphrase: string;
+  /** @nullable */
+  ticker?: string | null;
+  /** @nullable */
+  symbol?: string | null;
+  /** @nullable */
+  action?: string | null;
+  /** @nullable */
+  price?: number | string | null;
+  /** @nullable */
+  message?: string | null;
+}
+
+export interface OkResponse {
+  ok: boolean;
+}
+
 export interface HealthStatus {
   status: string;
 }

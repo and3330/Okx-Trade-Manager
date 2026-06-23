@@ -37,6 +37,9 @@ import type {
   LeaderboardEntry,
   ListAutoTradeDecisionsParams,
   ListAutoTradeExecutionsParams,
+  MonitorSettings,
+  MonitorSignal,
+  OkResponse,
   Order,
   OrderInput,
   OrderResult,
@@ -47,6 +50,9 @@ import type {
   PerpTicker,
   ResearchResult,
   Ticker,
+  WatchlistInput,
+  WatchlistItem,
+  WebhookPayload,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -133,6 +139,487 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List all tracked symbols
+ */
+export const getListWatchlistUrl = () => {
+  return `/api/monitor/watchlist`;
+};
+
+export const listWatchlist = async (
+  options?: RequestInit,
+): Promise<WatchlistItem[]> => {
+  return customFetch<WatchlistItem[]>(getListWatchlistUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListWatchlistQueryKey = () => {
+  return [`/api/monitor/watchlist`] as const;
+};
+
+export const getListWatchlistQueryOptions = <
+  TData = Awaited<ReturnType<typeof listWatchlist>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listWatchlist>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListWatchlistQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listWatchlist>>> = ({
+    signal,
+  }) => listWatchlist({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listWatchlist>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListWatchlistQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listWatchlist>>
+>;
+export type ListWatchlistQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all tracked symbols
+ */
+
+export function useListWatchlist<
+  TData = Awaited<ReturnType<typeof listWatchlist>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listWatchlist>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListWatchlistQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a symbol to the watchlist
+ */
+export const getAddWatchlistItemUrl = () => {
+  return `/api/monitor/watchlist`;
+};
+
+export const addWatchlistItem = async (
+  watchlistInput: WatchlistInput,
+  options?: RequestInit,
+): Promise<WatchlistItem> => {
+  return customFetch<WatchlistItem>(getAddWatchlistItemUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(watchlistInput),
+  });
+};
+
+export const getAddWatchlistItemMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addWatchlistItem>>,
+    TError,
+    { data: BodyType<WatchlistInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof addWatchlistItem>>,
+  TError,
+  { data: BodyType<WatchlistInput> },
+  TContext
+> => {
+  const mutationKey = ["addWatchlistItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof addWatchlistItem>>,
+    { data: BodyType<WatchlistInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return addWatchlistItem(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AddWatchlistItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof addWatchlistItem>>
+>;
+export type AddWatchlistItemMutationBody = BodyType<WatchlistInput>;
+export type AddWatchlistItemMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add a symbol to the watchlist
+ */
+export const useAddWatchlistItem = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addWatchlistItem>>,
+    TError,
+    { data: BodyType<WatchlistInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof addWatchlistItem>>,
+  TError,
+  { data: BodyType<WatchlistInput> },
+  TContext
+> => {
+  return useMutation(getAddWatchlistItemMutationOptions(options));
+};
+
+/**
+ * @summary Remove a symbol from the watchlist
+ */
+export const getRemoveWatchlistItemUrl = (id: number) => {
+  return `/api/monitor/watchlist/${id}`;
+};
+
+export const removeWatchlistItem = async (
+  id: number,
+  options?: RequestInit,
+): Promise<OkResponse> => {
+  return customFetch<OkResponse>(getRemoveWatchlistItemUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getRemoveWatchlistItemMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof removeWatchlistItem>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof removeWatchlistItem>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["removeWatchlistItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof removeWatchlistItem>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return removeWatchlistItem(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RemoveWatchlistItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof removeWatchlistItem>>
+>;
+
+export type RemoveWatchlistItemMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Remove a symbol from the watchlist
+ */
+export const useRemoveWatchlistItem = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof removeWatchlistItem>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof removeWatchlistItem>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRemoveWatchlistItemMutationOptions(options));
+};
+
+/**
+ * @summary List recently received strategy signals
+ */
+export const getListSignalsUrl = () => {
+  return `/api/monitor/signals`;
+};
+
+export const listSignals = async (
+  options?: RequestInit,
+): Promise<MonitorSignal[]> => {
+  return customFetch<MonitorSignal[]>(getListSignalsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSignalsQueryKey = () => {
+  return [`/api/monitor/signals`] as const;
+};
+
+export const getListSignalsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSignals>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSignals>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListSignalsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listSignals>>> = ({
+    signal,
+  }) => listSignals({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSignals>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSignalsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSignals>>
+>;
+export type ListSignalsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List recently received strategy signals
+ */
+
+export function useListSignals<
+  TData = Awaited<ReturnType<typeof listSignals>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSignals>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSignalsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get monitor settings (webhook passphrase for TradingView setup)
+ */
+export const getGetMonitorSettingsUrl = () => {
+  return `/api/monitor/settings`;
+};
+
+export const getMonitorSettings = async (
+  options?: RequestInit,
+): Promise<MonitorSettings> => {
+  return customFetch<MonitorSettings>(getGetMonitorSettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetMonitorSettingsQueryKey = () => {
+  return [`/api/monitor/settings`] as const;
+};
+
+export const getGetMonitorSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMonitorSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMonitorSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetMonitorSettingsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMonitorSettings>>
+  > = ({ signal }) => getMonitorSettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMonitorSettings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMonitorSettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMonitorSettings>>
+>;
+export type GetMonitorSettingsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get monitor settings (webhook passphrase for TradingView setup)
+ */
+
+export function useGetMonitorSettings<
+  TData = Awaited<ReturnType<typeof getMonitorSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMonitorSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMonitorSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Receive a TradingView alert webhook (validated by passphrase)
+ */
+export const getReceiveTradingViewWebhookUrl = () => {
+  return `/api/monitor/webhook/tradingview`;
+};
+
+export const receiveTradingViewWebhook = async (
+  webhookPayload: WebhookPayload,
+  options?: RequestInit,
+): Promise<OkResponse> => {
+  return customFetch<OkResponse>(getReceiveTradingViewWebhookUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(webhookPayload),
+  });
+};
+
+export const getReceiveTradingViewWebhookMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof receiveTradingViewWebhook>>,
+    TError,
+    { data: BodyType<WebhookPayload> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof receiveTradingViewWebhook>>,
+  TError,
+  { data: BodyType<WebhookPayload> },
+  TContext
+> => {
+  const mutationKey = ["receiveTradingViewWebhook"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof receiveTradingViewWebhook>>,
+    { data: BodyType<WebhookPayload> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return receiveTradingViewWebhook(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReceiveTradingViewWebhookMutationResult = NonNullable<
+  Awaited<ReturnType<typeof receiveTradingViewWebhook>>
+>;
+export type ReceiveTradingViewWebhookMutationBody = BodyType<WebhookPayload>;
+export type ReceiveTradingViewWebhookMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Receive a TradingView alert webhook (validated by passphrase)
+ */
+export const useReceiveTradingViewWebhook = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof receiveTradingViewWebhook>>,
+    TError,
+    { data: BodyType<WebhookPayload> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof receiveTradingViewWebhook>>,
+  TError,
+  { data: BodyType<WebhookPayload> },
+  TContext
+> => {
+  return useMutation(getReceiveTradingViewWebhookMutationOptions(options));
+};
 
 /**
  * @summary AI analysis of the current market for an instrument

@@ -16,6 +16,86 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * @summary List all tracked symbols
+ */
+export const ListWatchlistResponseItem = zod.object({
+  id: zod.number(),
+  symbol: zod.string(),
+  market: zod.enum(["tw", "us", "crypto"]),
+  displayName: zod.string(),
+  note: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const ListWatchlistResponse = zod.array(ListWatchlistResponseItem);
+
+/**
+ * @summary Add a symbol to the watchlist
+ */
+export const AddWatchlistItemBody = zod.object({
+  symbol: zod.string(),
+  market: zod.enum(["tw", "us", "crypto"]),
+  displayName: zod.string(),
+  note: zod.string().nullish(),
+});
+
+export const AddWatchlistItemResponse = zod.object({
+  id: zod.number(),
+  symbol: zod.string(),
+  market: zod.enum(["tw", "us", "crypto"]),
+  displayName: zod.string(),
+  note: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Remove a symbol from the watchlist
+ */
+export const RemoveWatchlistItemParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RemoveWatchlistItemResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * @summary List recently received strategy signals
+ */
+export const ListSignalsResponseItem = zod.object({
+  id: zod.number(),
+  receivedAt: zod.coerce.date(),
+  symbol: zod.string().nullish(),
+  action: zod.string().nullish(),
+  price: zod.string().nullish(),
+  message: zod.string().nullish(),
+  source: zod.string(),
+});
+export const ListSignalsResponse = zod.array(ListSignalsResponseItem);
+
+/**
+ * @summary Get monitor settings (webhook passphrase for TradingView setup)
+ */
+export const GetMonitorSettingsResponse = zod.object({
+  webhookPassphrase: zod.string(),
+});
+
+/**
+ * @summary Receive a TradingView alert webhook (validated by passphrase)
+ */
+export const ReceiveTradingViewWebhookBody = zod.object({
+  passphrase: zod.string(),
+  ticker: zod.string().nullish(),
+  symbol: zod.string().nullish(),
+  action: zod.string().nullish(),
+  price: zod.union([zod.number(), zod.string()]).nullish(),
+  message: zod.string().nullish(),
+});
+
+export const ReceiveTradingViewWebhookResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
  * @summary AI analysis of the current market for an instrument
  */
 export const AnalyzeMarketBody = zod.object({

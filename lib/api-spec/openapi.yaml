@@ -22,6 +22,8 @@ tags:
     description: AI-powered analysis
   - name: auto
     description: Auto-trade engine
+  - name: monitor
+    description: Daily market monitor (watchlist, strategy signals)
 paths:
   /healthz:
     get:
@@ -36,6 +38,104 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /monitor/watchlist:
+    get:
+      operationId: listWatchlist
+      tags: [monitor]
+      summary: List all tracked symbols
+      responses:
+        "200":
+          description: Watchlist items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WatchlistItem"
+    post:
+      operationId: addWatchlistItem
+      tags: [monitor]
+      summary: Add a symbol to the watchlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WatchlistInput"
+      responses:
+        "200":
+          description: Created watchlist item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistItem"
+
+  /monitor/watchlist/{id}:
+    delete:
+      operationId: removeWatchlistItem
+      tags: [monitor]
+      summary: Remove a symbol from the watchlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  /monitor/signals:
+    get:
+      operationId: listSignals
+      tags: [monitor]
+      summary: List recently received strategy signals
+      responses:
+        "200":
+          description: Signal list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MonitorSignal"
+
+  /monitor/settings:
+    get:
+      operationId: getMonitorSettings
+      tags: [monitor]
+      summary: Get monitor settings (webhook passphrase for TradingView setup)
+      responses:
+        "200":
+          description: Monitor settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorSettings"
+
+  /monitor/webhook/tradingview:
+    post:
+      operationId: receiveTradingViewWebhook
+      tags: [monitor]
+      summary: Receive a TradingView alert webhook (validated by passphrase)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
 
   /okx/ai/analyze:
     post:
@@ -455,6 +555,90 @@ paths:
 
 components:
   schemas:
+    WatchlistItem:
+      type: object
+      required: [id, symbol, market, displayName, createdAt]
+      properties:
+        id:
+          type: integer
+        symbol:
+          type: string
+        market:
+          type: string
+          enum: [tw, us, crypto]
+        displayName:
+          type: string
+        note:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    WatchlistInput:
+      type: object
+      required: [symbol, market, displayName]
+      properties:
+        symbol:
+          type: string
+        market:
+          type: string
+          enum: [tw, us, crypto]
+        displayName:
+          type: string
+        note:
+          type: ["string", "null"]
+
+    MonitorSignal:
+      type: object
+      required: [id, receivedAt, source]
+      properties:
+        id:
+          type: integer
+        receivedAt:
+          type: string
+          format: date-time
+        symbol:
+          type: ["string", "null"]
+        action:
+          type: ["string", "null"]
+        price:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+        source:
+          type: string
+
+    MonitorSettings:
+      type: object
+      required: [webhookPassphrase]
+      properties:
+        webhookPassphrase:
+          type: string
+
+    WebhookPayload:
+      type: object
+      required: [passphrase]
+      properties:
+        passphrase:
+          type: string
+        ticker:
+          type: ["string", "null"]
+        symbol:
+          type: ["string", "null"]
+        action:
+          type: ["string", "null"]
+        price:
+          type: ["number", "string", "null"]
+        message:
+          type: ["string", "null"]
+
+    OkResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+
     HealthStatus:
       type: object
       properties:

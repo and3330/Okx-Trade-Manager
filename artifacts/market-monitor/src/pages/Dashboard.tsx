@@ -5,7 +5,10 @@ import { TickerTape } from '@/components/TickerTape';
 import { AdvancedChart } from '@/components/AdvancedChart';
 import { MarketQuotes } from '@/components/MarketQuotes';
 import { TechnicalAnalysis } from '@/components/TechnicalAnalysis';
-import { Activity, Target } from 'lucide-react';
+import { WatchlistManager } from '@/components/WatchlistManager';
+import { SignalsPanel } from '@/components/SignalsPanel';
+import { StrategyPanel } from '@/components/StrategyPanel';
+import { Activity } from 'lucide-react';
 
 const MARKETS = {
   TW: {
@@ -70,6 +73,11 @@ export default function Dashboard() {
     }
   };
 
+  const handleWatchlistSelect = (symbol: string, market: string) => {
+    setActiveTab(market);
+    setSelectedSymbol(symbol);
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans dark">
       {/* Ticker Tape at the very top */}
@@ -82,6 +90,14 @@ export default function Dashboard() {
             <p className="text-muted-foreground mt-1">戰情室儀表板 • 即時數據</p>
           </div>
         </header>
+
+        <section className="space-y-2">
+          <h2 className="text-xl font-semibold px-1">我的追蹤清單</h2>
+          <p className="text-sm text-muted-foreground px-1">
+            登記想追蹤的標的，點清單即可跳到該分頁看圖與現價。
+          </p>
+          <WatchlistManager onSelect={handleWatchlistSelect} selectedSymbol={selectedSymbol} />
+        </section>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full md:w-[400px] grid-cols-3 bg-muted/50 p-1 rounded-md">
@@ -120,37 +136,10 @@ export default function Dashboard() {
                     )}
                   </div>
                   
-                  {/* Placeholder Panels Row */}
+                  {/* Monitoring + Strategy Panels Row */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card className="bg-card/50 border-dashed border-muted-foreground/30">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Activity className="h-5 w-5 text-primary" />
-                          每日監測
-                        </CardTitle>
-                        <CardDescription>即時監測摘要與訊號</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-[120px] flex items-center justify-center bg-muted/20 rounded-md border border-border/50">
-                          <p className="text-sm text-muted-foreground">此區塊即將載入每日監測數據與自動訊號。</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-card/50 border-dashed border-muted-foreground/30">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Target className="h-5 w-5 text-primary" />
-                          交易策略
-                        </CardTitle>
-                        <CardDescription>自訂策略規則與警示</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-[120px] flex items-center justify-center bg-muted/20 rounded-md border border-border/50">
-                          <p className="text-sm text-muted-foreground">此區塊即將載入您的專屬交易策略配置。</p>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <SignalsPanel />
+                    <StrategyPanel />
                   </div>
                 </div>
 
