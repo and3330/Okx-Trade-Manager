@@ -21,46 +21,16 @@ import {
 } from '@/components/ui/select';
 import { Wallet, Trash2, Plus } from 'lucide-react';
 import { buildSymbol, SYMBOL_INPUT, type MonitorMarket } from '@/lib/symbol';
-
-const MARKET_LABELS: Record<string, string> = { tw: '台股', us: '美股', crypto: '虛擬貨幣' };
-const MARKET_CCY: Record<string, string> = { tw: 'TWD', us: 'USD', crypto: 'USDT' };
-
-function num(v: string | number | null | undefined): number {
-  if (v == null) return 0;
-  const n = typeof v === 'number' ? v : parseFloat(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function fmt(n: number): string {
-  return n.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
-}
-
-interface Row {
-  h: Holding;
-  totalCost: number;
-  marketValue: number | null;
-  pl: number | null;
-  plPct: number | null;
-}
-
-function buildRow(h: Holding): Row {
-  const qty = num(h.quantity);
-  const cost = num(h.costPerUnit);
-  const fee = num(h.fee);
-  const totalCost = qty * cost + fee;
-  const cp = h.currentPrice;
-  const marketValue = cp != null ? qty * cp : null;
-  const pl = marketValue != null ? marketValue - totalCost : null;
-  const plPct = pl != null && totalCost > 0 ? (pl / totalCost) * 100 : null;
-  return { h, totalCost, marketValue, pl, plPct };
-}
-
-function plClass(pl: number | null): string {
-  if (pl == null) return 'text-muted-foreground';
-  if (pl > 0) return 'text-emerald-400';
-  if (pl < 0) return 'text-red-400';
-  return 'text-foreground';
-}
+import {
+  MARKET_LABELS,
+  MARKET_CCY,
+  num,
+  fmt,
+  plClass,
+  plLabel,
+  buildRow,
+  summarizeByMarket,
+} from '@/lib/holdings';
 
 function ManualPriceCell({ holding }: { holding: Holding }) {
   const queryClient = useQueryClient();
@@ -153,21 +123,7 @@ export const HoldingsPanel: React.FC = () => {
   };
 
   const rows = (holdings ?? []).map(buildRow);
-
-  const marketsPresent = [...new Set(rows.map((r) => r.h.market))];
-  const summaries = marketsPresent.map((mkt) => {
-    const mrows = rows.filter((r) => r.h.market === mkt);
-    const totalCost = mrows.reduce((a, r) => a + r.totalCost, 0);
-    const priced = mrows.filter((r) => r.marketValue != null);
-    const pricedCost = priced.reduce((a, r) => a + r.totalCost, 0);
-    const marketValue = priced.length
-      ? priced.reduce((a, r) => a + (r.marketValue ?? 0), 0)
-      : null;
-    const pl = marketValue != null ? marketValue - pricedCost : null;
-    const plPct = pl != null && pricedCost > 0 ? (pl / pricedCost) * 100 : null;
-    const unpriced = mrows.length - priced.length;
-    return { mkt, totalCost, marketValue, pl, plPct, unpriced, count: mrows.length };
-  });
+  const summaries = summarizeByMarket(rows);
 
   return (
     <Card className="bg-card/50 border-border">
@@ -185,12 +141,12 @@ export const HoldingsPanel: React.FC = () => {
         {summaries.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {summaries.map((s) => (
-              <div key={s.mkt} className="rounded-md border border-border bg-muted/30 p-3">
+              <div key={s.market} className="rounded-md border border-border bg-muted/30 p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-foreground">
-                    {MARKET_LABELS[s.mkt] ?? s.mkt}
+                    {MARKET_LABELS[s.market] ?? s.market}
                   </span>
-                  <span className="text-xs text-muted-foreground">{MARKET_CCY[s.mkt]}</span>
+                  <span className="text-xs text-muted-foreground">{MARKET_CCY[s.market]}</span>
                 </div>
                 <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
                   <div>
@@ -206,11 +162,7 @@ export const HoldingsPanel: React.FC = () => {
                   <div>
                     <div className="text-muted-foreground">未實現損益</div>
                     <div className={`tabular-nums ${plClass(s.pl)}`}>
-                      {s.pl != null
-                        ? `${s.pl >= 0 ? '+' : ''}${fmt(s.pl)}${
-                            s.plPct != null ? ` (${s.plPct >= 0 ? '+' : ''}${s.plPct.toFixed(2)}%)` : ''
-                          }`
-                        : '—'}
+                      {plLabel(s.pl, s.plPct)}
                     </div>
                   </div>
                 </div>
@@ -367,11 +319,7 @@ export const HoldingsPanel: React.FC = () => {
                       {marketValue != null ? fmt(marketValue) : '—'}
                     </td>
                     <td className={`py-2.5 px-3 text-right tabular-nums ${plClass(pl)}`}>
-                      {pl != null
-                        ? `${pl >= 0 ? '+' : ''}${fmt(pl)}${
-                            plPct != null ? ` (${plPct >= 0 ? '+' : ''}${plPct.toFixed(2)}%)` : ''
-                          }`
-                        : '—'}
+                      {plLabel(pl, plPct)}
                     </td>
                     <td className="py-2.5 pl-3 text-right">
                       <button

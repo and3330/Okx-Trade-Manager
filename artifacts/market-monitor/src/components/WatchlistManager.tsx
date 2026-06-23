@@ -79,8 +79,8 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({ onSelect, se
   return (
     <Card className="bg-card/60 border-border">
       <CardContent className="p-4 space-y-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <div className="flex flex-col gap-1 w-full sm:w-[120px]">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1 w-full">
             <label className="text-xs text-muted-foreground">市場</label>
             <Select value={market} onValueChange={(v) => setMarket(v as WatchlistInputMarket)}>
               <SelectTrigger>
@@ -107,7 +107,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({ onSelect, se
               {SYMBOL_INPUT[market as MonitorMarket].hint}
             </span>
           </div>
-          <div className="flex flex-col gap-1 w-full sm:w-[140px]">
+          <div className="flex flex-col gap-1 w-full">
             <label className="text-xs text-muted-foreground">顯示名稱（可留空）</label>
             <Input
               value={displayName}

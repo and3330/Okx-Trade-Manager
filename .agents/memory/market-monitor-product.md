@@ -5,7 +5,12 @@ description: The second product in this monorepo — a TradingView-fed market mo
 
 # 每日市場監測 (market-monitor artifact)
 
-A繁中 React dashboard, separate product from the OKX auto-trader but in the same pnpm monorepo. Three tabs: 台股 / 美股 / 虛擬貨幣. It is an 輔助工具 (assistant), not an auto-trader.
+A繁中 React dashboard, separate product from the OKX auto-trader but in the same pnpm monorepo. Covers three markets: 台股 / 美股 / 虛擬貨幣. It is an 輔助工具 (assistant), not an auto-trader.
+
+## Multi-page structure (wouter + persistent shell)
+
+The app is multi-page, not a single Dashboard. `App.tsx` wraps a `Switch` in `SelectionProvider` (lib/selection — shared selected symbol+market across pages) + `AppShell` (components/AppShell — shadcn Sidebar + global TickerTape; derives the header title from the current route). Pages: Overview `/`, Markets `/markets`, Holdings `/holdings`, Strategy `/strategy`. Shared config lives in `lib/markets.ts`; holdings math/summaries in `lib/holdings.ts`.
+**Gotcha:** Tailwind `sm:`/`md:` are viewport-based, not container-based. A shared form (e.g. WatchlistManager) placed in a narrow 1/3 column still flips to `sm:flex-row` at desktop width and cramps. Stack such in-column forms vertically (`flex-col`) rather than relying on `sm:` row layout.
 
 ## Key decisions / constraints
 
@@ -31,4 +36,4 @@ A繁中 React dashboard, separate product from the OKX auto-trader but in the sa
 
 ## Watchlist market is an enum
 
-`market` is constrained to `tw|us|crypto` in the OpenAPI spec (and thus the generated `WatchlistInputMarket` union + Zod validator). The dashboard tab switching relies on these exact values. Adding a market means updating the enum in `openapi.yaml`, re-running codegen, and adding the tab in `Dashboard.tsx`.
+`market` is constrained to `tw|us|crypto` in the OpenAPI spec (and thus the generated `WatchlistInputMarket` union + Zod validator). The Markets-page tab switching relies on these exact values. Adding a market means updating the enum in `openapi.yaml`, re-running codegen, and adding the market to `lib/markets.ts` (MARKETS/MARKET_LIST).
