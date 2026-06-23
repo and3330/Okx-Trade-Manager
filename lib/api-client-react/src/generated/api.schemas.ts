@@ -77,6 +77,92 @@ export interface OkResponse {
   ok: boolean;
 }
 
+export type HoldingMarket = (typeof HoldingMarket)[keyof typeof HoldingMarket];
+
+export const HoldingMarket = {
+  tw: "tw",
+  us: "us",
+  crypto: "crypto",
+} as const;
+
+export type HoldingPriceSource =
+  (typeof HoldingPriceSource)[keyof typeof HoldingPriceSource];
+
+export const HoldingPriceSource = {
+  live: "live",
+  manual: "manual",
+  none: "none",
+} as const;
+
+export interface Holding {
+  id: number;
+  symbol: string;
+  market: HoldingMarket;
+  displayName: string;
+  /** @nullable */
+  exchange?: string | null;
+  quantity: string;
+  costPerUnit: string;
+  /** @nullable */
+  fee?: string | null;
+  /** @nullable */
+  manualPrice?: string | null;
+  /** @nullable */
+  buyDate?: string | null;
+  /** @nullable */
+  note?: string | null;
+  createdAt: string;
+  /**
+   * Resolved current price (live for crypto, manualPrice otherwise)
+   * @nullable
+   */
+  currentPrice?: number | null;
+  priceSource?: HoldingPriceSource;
+}
+
+export type HoldingInputMarket =
+  (typeof HoldingInputMarket)[keyof typeof HoldingInputMarket];
+
+export const HoldingInputMarket = {
+  tw: "tw",
+  us: "us",
+  crypto: "crypto",
+} as const;
+
+export interface HoldingInput {
+  symbol: string;
+  market: HoldingInputMarket;
+  displayName: string;
+  /** @nullable */
+  exchange?: string | null;
+  quantity: number;
+  costPerUnit: number;
+  /** @nullable */
+  fee?: number | null;
+  /** @nullable */
+  manualPrice?: number | null;
+  /** @nullable */
+  buyDate?: string | null;
+  /** @nullable */
+  note?: string | null;
+}
+
+export interface HoldingUpdate {
+  /** @nullable */
+  exchange?: string | null;
+  quantity?: number;
+  costPerUnit?: number;
+  /** @nullable */
+  fee?: number | null;
+  /** @nullable */
+  manualPrice?: number | null;
+  /** @nullable */
+  buyDate?: string | null;
+  /** @nullable */
+  note?: string | null;
+  displayName?: string;
+}
+
 export interface HealthStatus {
   status: string;
 }

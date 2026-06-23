@@ -137,6 +137,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkResponse"
 
+  /monitor/holdings:
+    get:
+      operationId: listHoldings
+      tags: [monitor]
+      summary: List all holdings with resolved current price and P/L
+      responses:
+        "200":
+          description: Holdings list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Holding"
+    post:
+      operationId: addHolding
+      tags: [monitor]
+      summary: Record a new holding / purchase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HoldingInput"
+      responses:
+        "200":
+          description: Created holding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Holding"
+
+  /monitor/holdings/{id}:
+    patch:
+      operationId: updateHolding
+      tags: [monitor]
+      summary: Update a holding (e.g. manual current price for non-crypto)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HoldingUpdate"
+      responses:
+        "200":
+          description: Updated holding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Holding"
+    delete:
+      operationId: removeHolding
+      tags: [monitor]
+      summary: Delete a holding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
   /okx/ai/analyze:
     post:
       operationId: analyzeMarket
@@ -638,6 +712,92 @@ components:
       properties:
         ok:
           type: boolean
+
+    Holding:
+      type: object
+      required: [id, symbol, market, displayName, quantity, costPerUnit, createdAt]
+      properties:
+        id:
+          type: integer
+        symbol:
+          type: string
+        market:
+          type: string
+          enum: [tw, us, crypto]
+        displayName:
+          type: string
+        exchange:
+          type: ["string", "null"]
+        quantity:
+          type: string
+        costPerUnit:
+          type: string
+        fee:
+          type: ["string", "null"]
+        manualPrice:
+          type: ["string", "null"]
+        buyDate:
+          type: ["string", "null"]
+          format: date-time
+        note:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        currentPrice:
+          type: ["number", "null"]
+          description: Resolved current price (live for crypto, manualPrice otherwise)
+        priceSource:
+          type: string
+          enum: [live, manual, none]
+
+    HoldingInput:
+      type: object
+      required: [symbol, market, displayName, quantity, costPerUnit]
+      properties:
+        symbol:
+          type: string
+        market:
+          type: string
+          enum: [tw, us, crypto]
+        displayName:
+          type: string
+        exchange:
+          type: ["string", "null"]
+        quantity:
+          type: number
+        costPerUnit:
+          type: number
+        fee:
+          type: ["number", "null"]
+        manualPrice:
+          type: ["number", "null"]
+        buyDate:
+          type: ["string", "null"]
+          format: date-time
+        note:
+          type: ["string", "null"]
+
+    HoldingUpdate:
+      type: object
+      properties:
+        exchange:
+          type: ["string", "null"]
+        quantity:
+          type: number
+        costPerUnit:
+          type: number
+        fee:
+          type: ["number", "null"]
+        manualPrice:
+          type: ["number", "null"]
+        buyDate:
+          type: ["string", "null"]
+          format: date-time
+        note:
+          type: ["string", "null"]
+        displayName:
+          type: string
 
     HealthStatus:
       type: object

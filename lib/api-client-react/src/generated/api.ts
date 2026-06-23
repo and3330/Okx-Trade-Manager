@@ -34,6 +34,9 @@ import type {
   ErrorResponse,
   Fill,
   HealthStatus,
+  Holding,
+  HoldingInput,
+  HoldingUpdate,
   LeaderboardEntry,
   ListAutoTradeDecisionsParams,
   ListAutoTradeExecutionsParams,
@@ -619,6 +622,338 @@ export const useReceiveTradingViewWebhook = <
   TContext
 > => {
   return useMutation(getReceiveTradingViewWebhookMutationOptions(options));
+};
+
+/**
+ * @summary List all holdings with resolved current price and P/L
+ */
+export const getListHoldingsUrl = () => {
+  return `/api/monitor/holdings`;
+};
+
+export const listHoldings = async (
+  options?: RequestInit,
+): Promise<Holding[]> => {
+  return customFetch<Holding[]>(getListHoldingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListHoldingsQueryKey = () => {
+  return [`/api/monitor/holdings`] as const;
+};
+
+export const getListHoldingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listHoldings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listHoldings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListHoldingsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listHoldings>>> = ({
+    signal,
+  }) => listHoldings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listHoldings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListHoldingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listHoldings>>
+>;
+export type ListHoldingsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all holdings with resolved current price and P/L
+ */
+
+export function useListHoldings<
+  TData = Awaited<ReturnType<typeof listHoldings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listHoldings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListHoldingsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Record a new holding / purchase
+ */
+export const getAddHoldingUrl = () => {
+  return `/api/monitor/holdings`;
+};
+
+export const addHolding = async (
+  holdingInput: HoldingInput,
+  options?: RequestInit,
+): Promise<Holding> => {
+  return customFetch<Holding>(getAddHoldingUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(holdingInput),
+  });
+};
+
+export const getAddHoldingMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addHolding>>,
+    TError,
+    { data: BodyType<HoldingInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof addHolding>>,
+  TError,
+  { data: BodyType<HoldingInput> },
+  TContext
+> => {
+  const mutationKey = ["addHolding"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof addHolding>>,
+    { data: BodyType<HoldingInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return addHolding(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AddHoldingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof addHolding>>
+>;
+export type AddHoldingMutationBody = BodyType<HoldingInput>;
+export type AddHoldingMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Record a new holding / purchase
+ */
+export const useAddHolding = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addHolding>>,
+    TError,
+    { data: BodyType<HoldingInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof addHolding>>,
+  TError,
+  { data: BodyType<HoldingInput> },
+  TContext
+> => {
+  return useMutation(getAddHoldingMutationOptions(options));
+};
+
+/**
+ * @summary Update a holding (e.g. manual current price for non-crypto)
+ */
+export const getUpdateHoldingUrl = (id: number) => {
+  return `/api/monitor/holdings/${id}`;
+};
+
+export const updateHolding = async (
+  id: number,
+  holdingUpdate: HoldingUpdate,
+  options?: RequestInit,
+): Promise<Holding> => {
+  return customFetch<Holding>(getUpdateHoldingUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(holdingUpdate),
+  });
+};
+
+export const getUpdateHoldingMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateHolding>>,
+    TError,
+    { id: number; data: BodyType<HoldingUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateHolding>>,
+  TError,
+  { id: number; data: BodyType<HoldingUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateHolding"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateHolding>>,
+    { id: number; data: BodyType<HoldingUpdate> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateHolding(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateHoldingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateHolding>>
+>;
+export type UpdateHoldingMutationBody = BodyType<HoldingUpdate>;
+export type UpdateHoldingMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a holding (e.g. manual current price for non-crypto)
+ */
+export const useUpdateHolding = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateHolding>>,
+    TError,
+    { id: number; data: BodyType<HoldingUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateHolding>>,
+  TError,
+  { id: number; data: BodyType<HoldingUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateHoldingMutationOptions(options));
+};
+
+/**
+ * @summary Delete a holding
+ */
+export const getRemoveHoldingUrl = (id: number) => {
+  return `/api/monitor/holdings/${id}`;
+};
+
+export const removeHolding = async (
+  id: number,
+  options?: RequestInit,
+): Promise<OkResponse> => {
+  return customFetch<OkResponse>(getRemoveHoldingUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getRemoveHoldingMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof removeHolding>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof removeHolding>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["removeHolding"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof removeHolding>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return removeHolding(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RemoveHoldingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof removeHolding>>
+>;
+
+export type RemoveHoldingMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a holding
+ */
+export const useRemoveHolding = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof removeHolding>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof removeHolding>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRemoveHoldingMutationOptions(options));
 };
 
 /**

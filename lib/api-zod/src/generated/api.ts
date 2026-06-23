@@ -96,6 +96,121 @@ export const ReceiveTradingViewWebhookResponse = zod.object({
 });
 
 /**
+ * @summary List all holdings with resolved current price and P/L
+ */
+export const ListHoldingsResponseItem = zod.object({
+  id: zod.number(),
+  symbol: zod.string(),
+  market: zod.enum(["tw", "us", "crypto"]),
+  displayName: zod.string(),
+  exchange: zod.string().nullish(),
+  quantity: zod.string(),
+  costPerUnit: zod.string(),
+  fee: zod.string().nullish(),
+  manualPrice: zod.string().nullish(),
+  buyDate: zod.coerce.date().nullish(),
+  note: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  currentPrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Resolved current price (live for crypto, manualPrice otherwise)",
+    ),
+  priceSource: zod.enum(["live", "manual", "none"]).optional(),
+});
+export const ListHoldingsResponse = zod.array(ListHoldingsResponseItem);
+
+/**
+ * @summary Record a new holding / purchase
+ */
+export const AddHoldingBody = zod.object({
+  symbol: zod.string(),
+  market: zod.enum(["tw", "us", "crypto"]),
+  displayName: zod.string(),
+  exchange: zod.string().nullish(),
+  quantity: zod.number(),
+  costPerUnit: zod.number(),
+  fee: zod.number().nullish(),
+  manualPrice: zod.number().nullish(),
+  buyDate: zod.coerce.date().nullish(),
+  note: zod.string().nullish(),
+});
+
+export const AddHoldingResponse = zod.object({
+  id: zod.number(),
+  symbol: zod.string(),
+  market: zod.enum(["tw", "us", "crypto"]),
+  displayName: zod.string(),
+  exchange: zod.string().nullish(),
+  quantity: zod.string(),
+  costPerUnit: zod.string(),
+  fee: zod.string().nullish(),
+  manualPrice: zod.string().nullish(),
+  buyDate: zod.coerce.date().nullish(),
+  note: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  currentPrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Resolved current price (live for crypto, manualPrice otherwise)",
+    ),
+  priceSource: zod.enum(["live", "manual", "none"]).optional(),
+});
+
+/**
+ * @summary Update a holding (e.g. manual current price for non-crypto)
+ */
+export const UpdateHoldingParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateHoldingBody = zod.object({
+  exchange: zod.string().nullish(),
+  quantity: zod.number().optional(),
+  costPerUnit: zod.number().optional(),
+  fee: zod.number().nullish(),
+  manualPrice: zod.number().nullish(),
+  buyDate: zod.coerce.date().nullish(),
+  note: zod.string().nullish(),
+  displayName: zod.string().optional(),
+});
+
+export const UpdateHoldingResponse = zod.object({
+  id: zod.number(),
+  symbol: zod.string(),
+  market: zod.enum(["tw", "us", "crypto"]),
+  displayName: zod.string(),
+  exchange: zod.string().nullish(),
+  quantity: zod.string(),
+  costPerUnit: zod.string(),
+  fee: zod.string().nullish(),
+  manualPrice: zod.string().nullish(),
+  buyDate: zod.coerce.date().nullish(),
+  note: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  currentPrice: zod
+    .number()
+    .nullish()
+    .describe(
+      "Resolved current price (live for crypto, manualPrice otherwise)",
+    ),
+  priceSource: zod.enum(["live", "manual", "none"]).optional(),
+});
+
+/**
+ * @summary Delete a holding
+ */
+export const RemoveHoldingParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RemoveHoldingResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
  * @summary AI analysis of the current market for an instrument
  */
 export const AnalyzeMarketBody = zod.object({

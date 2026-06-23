@@ -8,6 +8,7 @@ import { TechnicalAnalysis } from '@/components/TechnicalAnalysis';
 import { WatchlistManager } from '@/components/WatchlistManager';
 import { SignalsPanel } from '@/components/SignalsPanel';
 import { StrategyPanel } from '@/components/StrategyPanel';
+import { HoldingsPanel } from '@/components/HoldingsPanel';
 import { Activity } from 'lucide-react';
 
 const MARKETS = {
@@ -176,6 +177,10 @@ export default function Dashboard() {
             </TabsContent>
           ))}
         </Tabs>
+
+        <section className="space-y-2">
+          <HoldingsPanel />
+        </section>
       </div>
     </div>
   );
