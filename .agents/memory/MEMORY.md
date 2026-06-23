@@ -1,0 +1,1 @@
+- [TradingView embed limits](tradingview-embed-limits.md) — free embeds cannot show Taiwan TWSE data (licensing); US/crypto fine; use official TWSE API for real TW data.
