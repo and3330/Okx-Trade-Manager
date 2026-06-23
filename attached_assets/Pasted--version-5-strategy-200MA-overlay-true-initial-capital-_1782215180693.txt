@@ -1,0 +1,181 @@
+//@version=5
+strategy("200MA 複合短線策略｜主圖整合儀表板版", 
+     overlay=true, 
+     initial_capital=5000, 
+     default_qty_type=strategy.percent_of_equity, 
+     default_qty_value=100,
+     pyramiding=0)
+
+// ==================== 1. 參數設定 ====================
+maLength      = input.int(200, title="大局均線週期")
+maLookback    = input.int(5, title="均線方向檢查波段")
+bufferPercent = input.float(1.5, title="支撐阻力感應範圍 (%)") / 100
+
+ema10Len      = input.int(10, title="EMA 10 快線")
+ema50Len      = input.int(50, title="EMA 50 中線")
+bbLength      = input.int(20, title="布林通道長度")
+bbMult        = input.float(2.0, title="布林通道標準差")
+volMaLen      = input.int(20, title="成交量均線長度")
+
+enableATR     = input.bool(true, title="啟用 ATR 動態止損/止盈")
+atrLength     = input.int(14, title="ATR 週期")
+stopLossPct   = input.float(1.5, title="固定停損百分比 (%)") / 100
+takeProfitPct = input.float(3.0, title="固定停利百分比 (%)") / 100
+
+showDashboard = input.bool(true, title="顯示右上角綜合評估表")
+showLines     = input.bool(true, title="顯示均線與布林通道")
+
+// ==================== 2. 指標運算 ====================
+ma = ta.sma(close, maLength)
+ema10 = ta.ema(close, ema10Len)
+ema50 = ta.ema(close, ema50Len)
+[bbMiddle, bbUpper, bbLower] = ta.bb(close, bbLength, bbMult)
+
+volMa = ta.sma(volume, volMaLen)
+atr = ta.atr(atrLength)
+
+ready = not na(ma) and not na(ma[maLookback]) and not na(ema10) and not na(ema50) and not na(bbUpper) and not na(volMa) and not na(atr)
+
+isMaUp = ready and ma > ma[maLookback]
+
+// ==================== 3. 畫在同一張主圖 ====================
+maColor = isMaUp ? color.green : color.red
+
+plot(showLines ? ma : na, title="200MA 生命線", color=maColor, linewidth=3)
+plot(showLines ? ema10 : na, title="EMA 10 快線", color=color.yellow, linewidth=1)
+plot(showLines ? ema50 : na, title="EMA 50 中線", color=color.orange, linewidth=2)
+
+plot(showLines ? bbUpper : na, title="布林上軌", color=color.blue, linewidth=1)
+plot(showLines ? bbLower : na, title="布林下軌", color=color.blue, linewidth=1)
+plot(showLines ? bbMiddle : na, title="布林中軌", color=color.gray, linewidth=1)
+
+// ==================== 4. 交易邏輯 ====================
+crossAboveMa = ta.crossover(close, ma)
+crossAboveBBUpper = ta.crossover(close, bbUpper)
+crossBelowEMA10 = ta.crossunder(close, ema10)
+
+// 原始 200MA 條件
+bRule2 = ready and isMaUp and crossAboveMa
+
+isNearMa = ready and low > ma and low <= ma * (1 + bufferPercent)
+bRule3 = ready and isMaUp and isNearMa and close > open and close > close[1]
+
+originalBuyCondition = bRule2 or bRule3
+
+// 短線共振條件
+emaLongTrend = ready and close > ema10 and ema10 > ema50 and close > ma
+bbBreakout = ready and crossAboveBBUpper
+volumeConfirm = ready and volume > volMa * 1.5
+
+shortTermBuyCondition = ready and isMaUp and emaLongTrend and bbBreakout and volumeConfirm
+
+longCondition = originalBuyCondition or shortTermBuyCondition
+
+// 出場條件
+isBelowMa = ready and close < ma
+
+resistanceCondition = ready and isBelowMa and 
+     high >= ma * (1 - bufferPercent) and 
+     high <= ma * (1 + bufferPercent) and 
+     close < open
+
+shortTermExitCondition = ready and crossBelowEMA10
+
+shortCondition = resistanceCondition or shortTermExitCondition
+
+// ==================== 5. 交易執行 ====================
+hasNoPosition = strategy.position_size == 0
+hasLongPosition = strategy.position_size > 0
+
+buySignal  = longCondition and hasNoPosition
+sellSignal = shortCondition and hasLongPosition
+
+if buySignal
+    strategy.entry("Long", strategy.long, comment="複合共振買入")
+
+if sellSignal
+    strategy.close("Long", comment="趨勢/反抽阻力離場")
+
+entryPrice = strategy.position_avg_price
+
+stopLevel = hasLongPosition ? 
+     enableATR ? entryPrice - 2.0 * atr : entryPrice * (1 - stopLossPct) 
+     : na
+
+profitLevel = hasLongPosition ? 
+     enableATR ? entryPrice + 4.0 * atr : entryPrice * (1 + takeProfitPct) 
+     : na
+
+if hasLongPosition and not na(stopLevel) and not na(profitLevel)
+    strategy.exit("停損停利", from_entry="Long", stop=stopLevel, limit=profitLevel, comment="停損/停利保護")
+
+// ==================== 6. 訊號繪製 ====================
+plotshape(buySignal, title="買入訊號", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="買")
+plotshape(sellSignal, title="賣出訊號", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small, text="賣")
+
+plot(hasLongPosition ? stopLevel : na, title="停損線", color=color.red, linewidth=1, style=plot.style_linebr)
+plot(hasLongPosition ? profitLevel : na, title="停利線", color=color.green, linewidth=1, style=plot.style_linebr)
+
+// ==================== 7. 綜合評估分數 ====================
+trendScore = isMaUp ? 1 : 0
+priceScore = ready and close > ma ? 1 : 0
+emaScore = ready and close > ema10 and ema10 > ema50 ? 1 : 0
+bbScore = ready and close > bbMiddle ? 1 : 0
+volScore = volumeConfirm ? 1 : 0
+
+totalScore = trendScore + priceScore + emaScore + bbScore + volScore
+
+volRatio = ready and volMa != 0 ? volume / volMa : na
+
+marketStatus = buySignal ? "買入訊號" :
+     sellSignal ? "離場訊號" :
+     hasLongPosition and totalScore >= 4 ? "持有偏多" :
+     totalScore >= 4 ? "偏多觀察" :
+     totalScore == 3 ? "中性整理" :
+     "偏弱觀望"
+
+statusColor = buySignal ? color.new(color.green, 0) :
+     sellSignal ? color.new(color.red, 0) :
+     totalScore >= 4 ? color.new(color.green, 20) :
+     totalScore == 3 ? color.new(color.orange, 20) :
+     color.new(color.red, 20)
+
+// ==================== 8. 右上角綜合評估表 ====================
+var table dash = table.new(position.top_right, 2, 10, border_width=1)
+
+f_price(x) =>
+    na(x) ? "-" : str.tostring(x, format.mintick)
+
+f_textColor(bg) =>
+    color.white
+
+if barstate.islast and showDashboard
+    table.cell(dash, 0, 0, "項目", bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(dash, 1, 0, "狀態", bgcolor=color.new(color.black, 0), text_color=color.white)
+
+    table.cell(dash, 0, 1, "綜合評估", bgcolor=color.new(color.black, 10), text_color=color.white)
+    table.cell(dash, 1, 1, marketStatus, bgcolor=statusColor, text_color=color.white)
+
+    table.cell(dash, 0, 2, "多頭分數", bgcolor=color.new(color.black, 10), text_color=color.white)
+    table.cell(dash, 1, 2, str.tostring(totalScore) + " / 5", bgcolor=statusColor, text_color=color.white)
+
+    table.cell(dash, 0, 3, "200MA 方向", bgcolor=color.new(color.black, 10), text_color=color.white)
+    table.cell(dash, 1, 3, isMaUp ? "向上" : "向下", bgcolor=isMaUp ? color.green : color.red, text_color=color.white)
+
+    table.cell(dash, 0, 4, "價格位置", bgcolor=color.new(color.black, 10), text_color=color.white)
+    table.cell(dash, 1, 4, close > ma ? "站上 200MA" : "跌破 200MA", bgcolor=close > ma ? color.green : color.red, text_color=color.white)
+
+    table.cell(dash, 0, 5, "短線排列", bgcolor=color.new(color.black, 10), text_color=color.white)
+    table.cell(dash, 1, 5, ema10 > ema50 ? "EMA 多頭" : "EMA 轉弱", bgcolor=ema10 > ema50 ? color.green : color.red, text_color=color.white)
+
+    table.cell(dash, 0, 6, "布林位置", bgcolor=color.new(color.black, 10), text_color=color.white)
+    table.cell(dash, 1, 6, close > bbUpper ? "突破上軌" : close > bbMiddle ? "中上偏強" : "中下偏弱", bgcolor=close > bbMiddle ? color.green : color.red, text_color=color.white)
+
+    table.cell(dash, 0, 7, "成交量", bgcolor=color.new(color.black, 10), text_color=color.white)
+    table.cell(dash, 1, 7, na(volRatio) ? "-" : str.tostring(volRatio, "#.##") + " 倍", bgcolor=volumeConfirm ? color.green : color.gray, text_color=color.white)
+
+    table.cell(dash, 0, 8, "停損價", bgcolor=color.new(color.black, 10), text_color=color.white)
+    table.cell(dash, 1, 8, f_price(stopLevel), bgcolor=color.new(color.red, 20), text_color=color.white)
+
+    table.cell(dash, 0, 9, "停利價", bgcolor=color.new(color.black, 10), text_color=color.white)
+    table.cell(dash, 1, 9, f_price(profitLevel), bgcolor=color.new(color.green, 20), text_color=color.white)

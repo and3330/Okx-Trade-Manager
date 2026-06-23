@@ -1,20 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
 import { LayoutDashboard, LineChart, Wallet, Radio, Activity } from 'lucide-react';
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-} from '@/components/ui/sidebar';
 import { TickerTape } from '@/components/TickerTape';
 import { ALL_TICKERS } from '@/lib/markets';
 
@@ -41,70 +27,61 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const current = [...NAV].reverse().find((n) => isActive(n.href, location)) ?? NAV[0];
 
   return (
-    <div className="dark">
-      <SidebarProvider>
-        <Sidebar collapsible="icon">
-          <SidebarHeader>
-            <div className="flex items-center gap-2.5 px-2 py-1.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/15 ring-1 ring-primary/30">
-                <Activity className="h-5 w-5 text-primary" />
-              </div>
-              <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-                <span className="text-sm font-semibold leading-tight text-foreground">
-                  每日市場監測
-                </span>
-                <span className="text-[11px] text-muted-foreground">市場監測 · 資產管理</span>
-              </div>
-            </div>
-          </SidebarHeader>
+    <div className="dark flex min-h-screen flex-col bg-background text-foreground">
+      <TickerTape symbols={ALL_TICKERS} />
 
-          <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {NAV.map((item) => (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive(item.href, location)}
-                        tooltip={item.label}
-                      >
-                        <Link href={item.href}>
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </SidebarContent>
-
-          <SidebarFooter>
-            <div className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground group-data-[collapsible=icon]:hidden">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px] shadow-emerald-400/70" />
-              即時數據連線中
+      <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center gap-4 px-4 py-2.5 md:px-6">
+          <div className="flex shrink-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/15 ring-1 ring-primary/30">
+              <Activity className="h-5 w-5 text-primary" />
             </div>
-          </SidebarFooter>
-        </Sidebar>
-
-        <SidebarInset className="bg-background">
-          <TickerTape symbols={ALL_TICKERS} />
-          <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-background/80 px-4 py-3 backdrop-blur md:px-6">
-            <SidebarTrigger className="-ml-1" />
-            <div className="flex flex-col">
-              <h1 className="text-lg font-semibold leading-tight tracking-tight text-foreground md:text-xl">
-                {current.label}
-              </h1>
-              <p className="text-xs text-muted-foreground">{current.subtitle}</p>
+            <div className="hidden flex-col sm:flex">
+              <span className="text-sm font-semibold leading-tight text-foreground">
+                每日市場監測
+              </span>
+              <span className="text-[11px] text-muted-foreground">市場監測 · 資產管理</span>
             </div>
-          </header>
-          <main className="flex-1 p-4 md:p-6">
-            <div className="mx-auto w-full max-w-[1600px]">{children}</div>
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
+          </div>
+
+          <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
+            {NAV.map((item) => {
+              const active = isActive(item.href, location);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-primary/15 text-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="hidden shrink-0 items-center gap-2 text-[11px] text-muted-foreground lg:flex">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px] shadow-emerald-400/70" />
+            即時數據連線中
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 p-4 md:p-6">
+        <div className="mx-auto w-full max-w-[1600px] space-y-6">
+          <div>
+            <h1 className="text-lg font-semibold leading-tight tracking-tight text-foreground md:text-xl">
+              {current.label}
+            </h1>
+            <p className="text-xs text-muted-foreground">{current.subtitle}</p>
+          </div>
+          {children}
+        </div>
+      </main>
     </div>
   );
 };
