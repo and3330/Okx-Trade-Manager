@@ -67,3 +67,11 @@ export const ALL_TICKERS = [
 export function marketById(id: string): MarketConfig | undefined {
   return MARKET_LIST.find((m) => m.id === id);
 }
+
+// Map a UI symbol like "TWSE:2330" / "TWSE:TAIEX" to the TWSE code the
+// backend expects ("2330" / "t00"). Kept in sync with the server normalizer.
+export function normalizeTwCode(raw: string): string {
+  const c = raw.replace(/^TWSE:/i, '').trim();
+  if (/^taiex$/i.test(c)) return 't00';
+  return c.toLowerCase();
+}

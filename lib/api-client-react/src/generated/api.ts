@@ -40,6 +40,8 @@ import type {
   LeaderboardEntry,
   ListAutoTradeDecisionsParams,
   ListAutoTradeExecutionsParams,
+  ListTwCandlesParams,
+  ListTwQuotesParams,
   MonitorSettings,
   MonitorSignal,
   OkResponse,
@@ -53,6 +55,8 @@ import type {
   PerpTicker,
   ResearchResult,
   Ticker,
+  TwCandle,
+  TwQuote,
   WatchlistInput,
   WatchlistItem,
   WebhookPayload,
@@ -955,6 +959,194 @@ export const useRemoveHolding = <
 > => {
   return useMutation(getRemoveHoldingMutationOptions(options));
 };
+
+/**
+ * @summary Real-time-ish Taiwan stock quotes from the official TWSE source
+ */
+export const getListTwQuotesUrl = (params: ListTwQuotesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/monitor/tw/quotes?${stringifiedParams}`
+    : `/api/monitor/tw/quotes`;
+};
+
+export const listTwQuotes = async (
+  params: ListTwQuotesParams,
+  options?: RequestInit,
+): Promise<TwQuote[]> => {
+  return customFetch<TwQuote[]>(getListTwQuotesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListTwQuotesQueryKey = (params?: ListTwQuotesParams) => {
+  return [`/api/monitor/tw/quotes`, ...(params ? [params] : [])] as const;
+};
+
+export const getListTwQuotesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTwQuotes>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListTwQuotesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listTwQuotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTwQuotesQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTwQuotes>>> = ({
+    signal,
+  }) => listTwQuotes(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listTwQuotes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListTwQuotesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listTwQuotes>>
+>;
+export type ListTwQuotesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Real-time-ish Taiwan stock quotes from the official TWSE source
+ */
+
+export function useListTwQuotes<
+  TData = Awaited<ReturnType<typeof listTwQuotes>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListTwQuotesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listTwQuotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListTwQuotesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Daily OHLC candles for one Taiwan stock from the official TWSE source
+ */
+export const getListTwCandlesUrl = (params: ListTwCandlesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/monitor/tw/candles?${stringifiedParams}`
+    : `/api/monitor/tw/candles`;
+};
+
+export const listTwCandles = async (
+  params: ListTwCandlesParams,
+  options?: RequestInit,
+): Promise<TwCandle[]> => {
+  return customFetch<TwCandle[]>(getListTwCandlesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListTwCandlesQueryKey = (params?: ListTwCandlesParams) => {
+  return [`/api/monitor/tw/candles`, ...(params ? [params] : [])] as const;
+};
+
+export const getListTwCandlesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTwCandles>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListTwCandlesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listTwCandles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTwCandlesQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTwCandles>>> = ({
+    signal,
+  }) => listTwCandles(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listTwCandles>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListTwCandlesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listTwCandles>>
+>;
+export type ListTwCandlesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Daily OHLC candles for one Taiwan stock from the official TWSE source
+ */
+
+export function useListTwCandles<
+  TData = Awaited<ReturnType<typeof listTwCandles>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListTwCandlesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listTwCandles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListTwCandlesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary AI analysis of the current market for an instrument

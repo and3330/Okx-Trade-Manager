@@ -211,6 +211,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkResponse"
 
+  /monitor/tw/quotes:
+    get:
+      operationId: listTwQuotes
+      tags: [monitor]
+      summary: Real-time-ish Taiwan stock quotes from the official TWSE source
+      parameters:
+        - name: codes
+          in: query
+          required: true
+          description: Comma-separated TWSE codes, e.g. "2330,2317,t00" (t00 = TAIEX index)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Quotes (one entry per requested code that resolved)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TwQuote"
+
+  /monitor/tw/candles:
+    get:
+      operationId: listTwCandles
+      tags: [monitor]
+      summary: Daily OHLC candles for one Taiwan stock from the official TWSE source
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: TWSE stock code, e.g. "2330"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Daily candles ascending by date
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TwCandle"
+
   /okx/ai/analyze:
     post:
       operationId: analyzeMarket
@@ -798,6 +842,54 @@ components:
           type: ["string", "null"]
         displayName:
           type: string
+
+    TwQuote:
+      type: object
+      required: [code, name, source]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        price:
+          type: ["number", "null"]
+        open:
+          type: ["number", "null"]
+        high:
+          type: ["number", "null"]
+        low:
+          type: ["number", "null"]
+        prevClose:
+          type: ["number", "null"]
+        change:
+          type: ["number", "null"]
+        changePct:
+          type: ["number", "null"]
+        volume:
+          type: ["number", "null"]
+        time:
+          type: ["string", "null"]
+        source:
+          type: string
+          enum: [live, none]
+
+    TwCandle:
+      type: object
+      required: [time, open, high, low, close]
+      properties:
+        time:
+          type: string
+          description: ISO date (YYYY-MM-DD)
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: ["number", "null"]
 
     HealthStatus:
       type: object

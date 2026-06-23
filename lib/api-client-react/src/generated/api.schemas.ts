@@ -163,6 +163,48 @@ export interface HoldingUpdate {
   displayName?: string;
 }
 
+export type TwQuoteSource = (typeof TwQuoteSource)[keyof typeof TwQuoteSource];
+
+export const TwQuoteSource = {
+  live: "live",
+  none: "none",
+} as const;
+
+export interface TwQuote {
+  code: string;
+  name: string;
+  /** @nullable */
+  price?: number | null;
+  /** @nullable */
+  open?: number | null;
+  /** @nullable */
+  high?: number | null;
+  /** @nullable */
+  low?: number | null;
+  /** @nullable */
+  prevClose?: number | null;
+  /** @nullable */
+  change?: number | null;
+  /** @nullable */
+  changePct?: number | null;
+  /** @nullable */
+  volume?: number | null;
+  /** @nullable */
+  time?: string | null;
+  source: TwQuoteSource;
+}
+
+export interface TwCandle {
+  /** ISO date (YYYY-MM-DD) */
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  /** @nullable */
+  volume?: number | null;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -723,6 +765,20 @@ export interface LeaderboardEntry {
   winRate: number;
   totalRealizedPnlUsdt: number;
 }
+
+export type ListTwQuotesParams = {
+  /**
+   * Comma-separated TWSE codes, e.g. "2330,2317,t00" (t00 = TAIEX index)
+   */
+  codes: string;
+};
+
+export type ListTwCandlesParams = {
+  /**
+   * TWSE stock code, e.g. "2330"
+   */
+  code: string;
+};
 
 export type ListAutoTradeDecisionsParams = {
   limit?: number;

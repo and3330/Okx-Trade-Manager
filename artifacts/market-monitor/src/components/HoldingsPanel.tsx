@@ -133,7 +133,7 @@ export const HoldingsPanel: React.FC = () => {
           我的持倉與損益
         </CardTitle>
         <CardDescription>
-          記錄每一筆購買（在哪買、成本、數量），自動算出損益。虛擬貨幣抓即時價，美股／台股請手動輸入現價。
+          記錄每一筆購買（在哪買、成本、數量），自動算出損益。虛擬貨幣與台股自動抓即時價，美股請手動輸入現價。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -306,7 +306,7 @@ export const HoldingsPanel: React.FC = () => {
                     <td className="py-2.5 px-3 text-right tabular-nums">{fmt(num(h.costPerUnit))}</td>
                     <td className="py-2.5 px-3 text-right tabular-nums">{fmt(totalCost)}</td>
                     <td className="py-2.5 px-3 text-right">
-                      {h.market === 'crypto' ? (
+                      {h.priceSource === 'live' ? (
                         <span className="tabular-nums">
                           {h.currentPrice != null ? fmt(h.currentPrice) : '—'}
                           <span className="ml-1 text-[10px] text-emerald-400/80">即時</span>

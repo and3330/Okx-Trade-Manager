@@ -211,6 +211,50 @@ export const RemoveHoldingResponse = zod.object({
 });
 
 /**
+ * @summary Real-time-ish Taiwan stock quotes from the official TWSE source
+ */
+export const ListTwQuotesQueryParams = zod.object({
+  codes: zod.coerce
+    .string()
+    .describe(
+      'Comma-separated TWSE codes, e.g. \"2330,2317,t00\" (t00 = TAIEX index)',
+    ),
+});
+
+export const ListTwQuotesResponseItem = zod.object({
+  code: zod.string(),
+  name: zod.string(),
+  price: zod.number().nullish(),
+  open: zod.number().nullish(),
+  high: zod.number().nullish(),
+  low: zod.number().nullish(),
+  prevClose: zod.number().nullish(),
+  change: zod.number().nullish(),
+  changePct: zod.number().nullish(),
+  volume: zod.number().nullish(),
+  time: zod.string().nullish(),
+  source: zod.enum(["live", "none"]),
+});
+export const ListTwQuotesResponse = zod.array(ListTwQuotesResponseItem);
+
+/**
+ * @summary Daily OHLC candles for one Taiwan stock from the official TWSE source
+ */
+export const ListTwCandlesQueryParams = zod.object({
+  code: zod.coerce.string().describe('TWSE stock code, e.g. \"2330\"'),
+});
+
+export const ListTwCandlesResponseItem = zod.object({
+  time: zod.string().describe("ISO date (YYYY-MM-DD)"),
+  open: zod.number(),
+  high: zod.number(),
+  low: zod.number(),
+  close: zod.number(),
+  volume: zod.number().nullish(),
+});
+export const ListTwCandlesResponse = zod.array(ListTwCandlesResponseItem);
+
+/**
  * @summary AI analysis of the current market for an instrument
  */
 export const AnalyzeMarketBody = zod.object({

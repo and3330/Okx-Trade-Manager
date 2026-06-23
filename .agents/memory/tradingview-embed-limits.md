@@ -11,4 +11,4 @@ Free embeddable TradingView widgets (the `s3.tradingview.com/external-embedding/
 
 **Why:** exchange redistribution agreements forbid serving TWSE data through third-party free embeds.
 
-**How to apply:** never rely on TradingView free embeds for Taiwan-stock data. In `market-monitor`, the 台股 tab intentionally shows an honest "資料來源建置中" notice and TW symbols are excluded from the ticker tape. To show real Taiwan data later, use the official TWSE Open API (`mis.twse.com.tw` realtime, `twse.com.tw/exchangeReport/STOCK_DAY` history — both free, no key, needs a backend proxy for CORS) rendered with TradingView Lightweight Charts (open source). NYSE:TSM ADR can proxy TSMC only (USD-priced, misleading).
+**How to apply:** never rely on TradingView free embeds for Taiwan-stock data. In `market-monitor` the 台股 tab now uses **official TWSE data via backend proxy** (see [TWSE official data](twse-official-data.md)), not embeds — rendered with TradingView Lightweight Charts (open source). The old "資料來源建置中" notice is gone. NYSE:TSM ADR can proxy TSMC only (USD-priced, misleading) — not used.
