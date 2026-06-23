@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Trash2, Plus } from 'lucide-react';
+import { buildSymbol, SYMBOL_INPUT, type MonitorMarket } from '@/lib/symbol';
 
 const MARKET_LABELS: Record<string, string> = {
   tw: '台股',
@@ -45,18 +46,19 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({ onSelect, se
     queryClient.invalidateQueries({ queryKey: getListWatchlistQueryKey() });
 
   const handleAdd = () => {
-    const trimmedSymbol = symbol.trim();
-    if (!trimmedSymbol) {
+    const raw = symbol.trim();
+    if (!raw) {
       setError('請輸入代號');
       return;
     }
+    const builtSymbol = buildSymbol(market as MonitorMarket, raw);
     setError('');
     addMutation.mutate(
       {
         data: {
-          symbol: trimmedSymbol,
+          symbol: builtSymbol,
           market,
-          displayName: displayName.trim() || trimmedSymbol,
+          displayName: displayName.trim() || raw.toUpperCase(),
         },
       },
       {
@@ -93,14 +95,17 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({ onSelect, se
           </div>
           <div className="flex flex-col gap-1 flex-1">
             <label className="text-xs text-muted-foreground">
-              TradingView 代號（例如 NASDAQ:AAPL、BINANCE:BTCUSDT、TWSE:2330）
+              {SYMBOL_INPUT[market as MonitorMarket].label}
             </label>
             <Input
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
-              placeholder="NASDAQ:AAPL"
+              placeholder={SYMBOL_INPUT[market as MonitorMarket].placeholder}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
             />
+            <span className="text-[11px] text-muted-foreground/80">
+              {SYMBOL_INPUT[market as MonitorMarket].hint}
+            </span>
           </div>
           <div className="flex flex-col gap-1 w-full sm:w-[140px]">
             <label className="text-xs text-muted-foreground">顯示名稱（可留空）</label>
@@ -122,7 +127,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({ onSelect, se
           <p className="text-sm text-muted-foreground">載入中…</p>
         ) : !items || items.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            尚未追蹤任何標的。在上方輸入 TradingView 代號加入，點清單即可立即看圖與現價。
+            尚未追蹤任何標的。在上方選擇市場、輸入代號加入，點清單即可立即看圖與現價。
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">

@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Wallet, Trash2, Plus } from 'lucide-react';
+import { buildSymbol, SYMBOL_INPUT, type MonitorMarket } from '@/lib/symbol';
 
 const MARKET_LABELS: Record<string, string> = { tw: '台股', us: '美股', crypto: '虛擬貨幣' };
 const MARKET_CCY: Record<string, string> = { tw: 'TWD', us: 'USD', crypto: 'USDT' };
@@ -114,19 +115,20 @@ export const HoldingsPanel: React.FC = () => {
     queryClient.invalidateQueries({ queryKey: getListHoldingsQueryKey() });
 
   const handleAdd = () => {
-    const s = symbol.trim();
+    const raw = symbol.trim();
     const q = Number(quantity);
     const c = Number(costPerUnit);
-    if (!s) return setError('請輸入代號');
+    if (!raw) return setError('請輸入代號');
     if (!quantity || !Number.isFinite(q) || q <= 0) return setError('請輸入有效數量');
     if (!costPerUnit || !Number.isFinite(c) || c < 0) return setError('請輸入有效買入單價');
+    const builtSymbol = buildSymbol(market as MonitorMarket, raw);
     setError('');
     addMutation.mutate(
       {
         data: {
-          symbol: s,
+          symbol: builtSymbol,
           market,
-          displayName: displayName.trim() || s,
+          displayName: displayName.trim() || raw.toUpperCase(),
           exchange: exchange.trim() || null,
           quantity: q,
           costPerUnit: c,
@@ -239,11 +241,13 @@ export const HoldingsPanel: React.FC = () => {
               </Select>
             </div>
             <div className="flex flex-col gap-1 col-span-2 md:col-span-1">
-              <label className="text-xs text-muted-foreground">代號</label>
+              <label className="text-xs text-muted-foreground">
+                {SYMBOL_INPUT[market as MonitorMarket].label}
+              </label>
               <Input
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value)}
-                placeholder="BINANCE:BTCUSDT"
+                placeholder={SYMBOL_INPUT[market as MonitorMarket].placeholder}
                 className="h-9"
               />
             </div>
