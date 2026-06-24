@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
-import { LayoutDashboard, LineChart, Wallet, Radio, Activity } from 'lucide-react';
+import { LayoutDashboard, LineChart, Wallet, Radio, Activity, CandlestickChart } from 'lucide-react';
 import { TickerTape } from '@/components/TickerTape';
 import { ALL_TICKERS } from '@/lib/markets';
 
@@ -14,6 +14,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/', label: '總覽', subtitle: '投資組合與市場一覽', icon: LayoutDashboard },
   { href: '/markets', label: '市場行情', subtitle: '走勢圖、技術分析與追蹤切換', icon: LineChart },
+  { href: '/trade', label: '交易下單', subtitle: 'OKX 現貨／合約下單、AI 對戰與自動交易', icon: CandlestickChart },
   { href: '/holdings', label: '持倉管理', subtitle: '記錄每一筆買入，自動算出損益', icon: Wallet },
   { href: '/strategy', label: '策略訊號', subtitle: 'TradingView 警報訊號與 Webhook 設定', icon: Radio },
 ];
@@ -25,9 +26,10 @@ function isActive(href: string, location: string): boolean {
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [location] = useLocation();
   const current = [...NAV].reverse().find((n) => isActive(n.href, location)) ?? NAV[0];
+  const fullBleed = isActive('/trade', location);
 
   return (
-    <div className="dark flex min-h-screen flex-col bg-background text-foreground">
+    <div className="dark flex h-dvh flex-col bg-background text-foreground">
       <TickerTape symbols={ALL_TICKERS} />
 
       <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
@@ -38,9 +40,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             </div>
             <div className="hidden flex-col sm:flex">
               <span className="text-sm font-semibold leading-tight text-foreground">
-                每日市場監測
+                市場監測與交易
               </span>
-              <span className="text-[11px] text-muted-foreground">市場監測 · 資產管理</span>
+              <span className="text-[11px] text-muted-foreground">監測 · 下單 · 資產管理</span>
             </div>
           </div>
 
@@ -71,17 +73,21 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         </div>
       </header>
 
-      <main className="flex-1 p-4 md:p-6">
-        <div className="mx-auto w-full max-w-[1600px] space-y-6">
-          <div>
-            <h1 className="text-lg font-semibold leading-tight tracking-tight text-foreground md:text-xl">
-              {current.label}
-            </h1>
-            <p className="text-xs text-muted-foreground">{current.subtitle}</p>
+      {fullBleed ? (
+        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+      ) : (
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          <div className="mx-auto w-full max-w-[1600px] space-y-6">
+            <div>
+              <h1 className="text-lg font-semibold leading-tight tracking-tight text-foreground md:text-xl">
+                {current.label}
+              </h1>
+              <p className="text-xs text-muted-foreground">{current.subtitle}</p>
+            </div>
+            {children}
           </div>
-          {children}
-        </div>
-      </main>
+        </main>
+      )}
     </div>
   );
 };

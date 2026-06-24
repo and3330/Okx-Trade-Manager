@@ -1,6 +1,6 @@
 kind = "web"
-previewPath = "/"
-title = "OKX Trader"
+previewPath = "/okx-classic/"
+title = "OKX Trader (舊版)"
 version = "1.0.0"
 id = "artifacts/okx-trader"
 router = "path"
@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/" ]
+paths = [ "/okx-classic/" ]
 localPort = 24892
 
 [services.development]
@@ -28,4 +28,4 @@ to = "/index.html"
 
 [services.env]
 PORT = "24892"
-BASE_PATH = "/"
+BASE_PATH = "/okx-classic/"

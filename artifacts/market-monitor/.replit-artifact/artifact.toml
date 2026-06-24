@@ -1,6 +1,6 @@
 kind = "web"
-previewPath = "/market-monitor/"
-title = "每日市場監測"
+previewPath = "/"
+title = "市場監測與交易平台"
 version = "1.0.0"
 id = "artifacts/market-monitor"
 router = "path"
@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/market-monitor/" ]
+paths = [ "/" ]
 localPort = 18144
 
 [services.development]
@@ -28,4 +28,4 @@ to = "/index.html"
 
 [services.env]
 PORT = "18144"
-BASE_PATH = "/market-monitor/"
+BASE_PATH = "/"

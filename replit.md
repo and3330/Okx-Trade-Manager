@@ -1,6 +1,10 @@
-# OKX Trader
+# 市場監測與交易平台 (Market Monitor & Trader)
 
-Single-user web dashboard for OKX cryptocurrency spot trading: live tickers + 1H candle chart, account equity and holdings, market buy/sell orders by USDT notional with optional stop-loss, and recent orders/fills.
+Single unified web app (the `market-monitor` artifact, served at `/`) combining two formerly-separate products:
+- **市場監測 / 持倉 / 策略** — 繁中 dashboard: TW/US/crypto market monitoring, manual holdings P&L, TradingView webhook signals.
+- **交易下單** — OKX spot + perp trading terminal (live tickers, candle chart, account equity/holdings, market buy/sell by USDT notional with optional stop-loss, recent orders/fills, AI Trade Battle, auto-trade engine).
+
+The order panel has an exchange selector (OKX active; 派網/Pionex stubbed as "待綁定" — planned, no backend yet). The old standalone `okx-trader` artifact is retired and parked at `/okx-classic/` (kept as a reversible backup, pending deletion).
 
 ## Security note
 
